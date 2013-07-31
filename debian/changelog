@@ -1,3 +1,12 @@
+sudo (1.7.4p4-2.squeeze.4) stable-security; urgency=high
+
+  * Fix cve-2013-1775: authentication bypass when the clock is set to the UNIX
+    epoch [00:00:00 UTC on 1 January 1970] (closes: #701838).
+  * Fix cve-2013-1776: session id hijacking from another authorized tty 
+    (closes: #701839).
+
+ -- Michael Gilbert <mgilbert@debian.org>  Wed, 06 Mar 2013 18:41:15 +0000
+
 sudo (1.7.4p4-2.squeeze.3) stable-security; urgency=high
 
   * CVE-2012-2337
