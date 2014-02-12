@@ -56,6 +56,13 @@
 #endif /* _PATH_ENVIRONMENT */
 
 /*
+ * NOTE: _PATH_SUDO_CONF is usually overridden by the Makefile.
+ */
+#ifndef _PATH_SUDO_CONF
+#define _PATH_SUDO_CONF		"/etc/sudo.conf"
+#endif /* _PATH_SUDO_CONF */
+
+/*
  * NOTE: _PATH_SUDOERS is usually overridden by the Makefile.
  */
 #ifndef _PATH_SUDOERS
@@ -102,6 +109,10 @@
 #undef _PATH_SUDO_ASKPASS
 #endif /* _PATH_SUDO_ASKPASS */
 
+#ifndef _PATH_SUDO_PLUGIN_DIR
+#undef _PATH_SUDO_PLUGIN_DIR
+#endif /* _PATH_SUDO_PLUGIN_DIR */
+
 #ifndef _PATH_VI
 #undef _PATH_VI
 #endif /* _PATH_VI */
@@ -129,6 +140,10 @@
 #ifndef _PATH_MAILDIR
 #undef _PATH_MAILDIR
 #endif /* _PATH_MAILDIR */
+
+#ifndef _PATH_UTMP
+#undef _PATH_UTMP
+#endif /* _PATH_UTMP */
 
 #ifndef _PATH_SUDO_SESH
 #undef _PATH_SUDO_SESH

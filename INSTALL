@@ -1,5 +1,5 @@
-Installation instructions for Sudo 1.7
-======================================
+Sudo installation instructions
+==============================
 
 Sudo uses a `configure' script to probe the capabilities and type
 of the system in question.  In this release, `configure' takes many
@@ -30,13 +30,13 @@ For most systems and configurations it is possible simply to:
        have changed the paths via options to `configure'.
 
     5) Type `make' to compile sudo.  If you are building sudo
-       in a separate build tree (apart from the sudo source)
-       GNU make will probably be required.  If `configure' did
-       its job properly (and you have a supported configuration)
-       there won't be any problems.  If this doesn't work, take
-       a look at the files TROUBLESHOOTING and PORTING for tips
-       on what might have gone wrong.  Please mail us if you have a
-       fix or if you are unable to come up with a fix (address at EOF).
+       in a separate build tree (apart from the sudo source) GNU
+       make will probably be required.  If `configure' did its job
+       properly (and you have a supported configuration) there won't
+       be any problems.  If this doesn't work, take a look at the
+       TROUBLESHOOTING file for tips on what might have gone wrong.
+       Please mail us if you have a fix or if you are unable to
+       come up with a fix (address at EOF).
 
     6) Type `make install' (as root) to install sudo, visudo, the
        man pages, and a skeleton sudoers file.  Note that the install
@@ -99,9 +99,6 @@ Directory and file names:
 	Find the sources in DIR [configure dir or ..]
 
 Special features/options:
-  --with-CC=PATH
-	Specifies path to C compiler you wish to use.
-
   --with-incpath=DIR
 	Adds the specified directory (or directories) to CPPFLAGS
 	so configure and the compiler will look there for include
@@ -134,6 +131,10 @@ Special features/options:
 	`-l' will be prepended to it.  Multiple libraries may be
 	specified as long as they are space separated.
 
+  --with-plugindir=PATH
+	Set the directory that sudo looks in to find the policy and I/O
+	logging plugins.  Defaults to the libexec dir used by configure.
+
   --with-efence
 	Link with the "electric fence" debugging malloc.
 
@@ -141,12 +142,17 @@ Special features/options:
 	Enable support for sudo BSM audit logs on systems that support
 	it.  Currently only supported under FreeBSD and Mac OS X.
 
+  --with-csops
+	Add CSOps standard options.  You probably aren't interested in this.
+
+  --with-devel
+        Configure development options.  This will enable compiler warnings
+	and set the Makefile to be able to regenerate the sudoers parser
+	as well as the manual pages.
+
   --with-linux-audit
 	Enable audit support for Linux systems.  Audits attempts
 	to run a command as well as SELinux role changes.
-
-  --with-csops
-	Add CSOps standard options.  You probably aren't interested in this.
 
   --with-skey[=DIR]
 	Enable S/Key OTP (One Time Password) support.  If specified,
@@ -160,18 +166,12 @@ Special features/options:
 
   --with-SecurID[=DIR]
 	Enable SecurID support.  If specified, DIR is directory containing
-	sdiclient.a, sdi_athd.h, sdconf.h, and sdacmvls.h.
+	libaceclnt.a, acexport.h, and sdacmvls.h.
 
   --with-fwtk[=DIR]
 	Enable TIS Firewall Toolkit (FWTK) 'authsrv' support. If specified,
 	DIR is the base directory containing the compiled FWTK package
 	(or at least the library and header files).
-
-  --with-kerb4[=DIR]
-	Enable Kerberos IV support.  If specified, DIR is the base
-	directory containing the Kerberos IV include and lib dirs.
-	This uses Kerberos passphrases for authentication but does
-	not use the Kerberos cookie scheme.
 
   --with-kerb5[=DIR]
 	Enable Kerberos V support.  If specified, DIR is the base
@@ -179,6 +179,13 @@ Special features/options:
 	This This uses Kerberos passphrases for authentication but
 	does not use the Kerberos cookie scheme.  Will not work for
 	Kerberos V older than version 1.1.
+
+  --enable-kerb5-instance=string
+        By default, the user name is used as the principal name
+        when authenticating via Kerberos V.  If this option is
+        enabled, the specified instance string will be appended to
+        the user name (separated by a slash) when creating the
+        principal name.
 
   --with-ldap[=DIR]
 	Enable LDAP support.  If specified, DIR is the base directory
@@ -279,7 +286,7 @@ Special features/options:
         older PAM implementations or on operating systems where
         opening a PAM session changes the utmp or wtmp files.  If
         PAM session support is disabled, resource limits may not
-        be updatedin for command being run.
+        be updated for the command being run.
 
   --disable-root-mailer
 	By default sudo will run the mailer as root when tattling
@@ -345,16 +352,6 @@ Special features/options:
   --with-selinux 
 	Enable support for role based access control (RBAC) on
 	systems that support SELinux.
-
-  --with-libvas=[NAME]
-        Enable non-Unix group support using Quest Authentication
-        Services.  If NAME is specified, it should be the name of
-	the shared library providing QAS support (libvas.so by default).
-
-  --with-libvas-rpath=[PATH]
-	The path to search when loading libvas.so (or an alternate
-	name as specified by --with-libvas).  This option only has
-	an effect when --with-libvas is specified.
 
 The following options are also configurable at runtime:
 
@@ -463,6 +460,11 @@ The following options are also configurable at runtime:
   --without-umask
 	Preserves the umask of the user invoking sudo.
 
+  --with-umask-override
+        Use the umask specified in sudoers even if it is less restrictive
+	than the user's.  The default is to use the intersection of the
+	user's umask and the umask specified in sudoers.
+
   --with-runas-default=USER
 	The default user to run commands as if the -u flag is not specified
 	on the command line.  This defaults to "root".
@@ -562,6 +564,12 @@ The following options are also configurable at runtime:
         prompt as an argument and print the received password to
         the standard output.
 
+  --with-iologdir[=DIR]
+        By default, sudo stores I/O log files in either /var/log/sudo-io,
+        /var/adm/sudo-io, or /usr/log/sudo-io.  If this option is
+        specified, I/O logs will be stored in the indicated directory
+        instead.
+
   --disable-authentication
 	By default, sudo requires the user to authenticate via a
 	password or similar means.  This options causes sudo to
@@ -603,22 +611,15 @@ The following options are also configurable at runtime:
 	if the executable is simply not in the user's path, sudo will tell
 	the user that they are not allowed to run it, which can be confusing.
 
-  --disable-iologdir
-	Disable sudo's I/O logging support.  This can be used to allow sudo
-	to be compiled on systems without pseudo-tty support.
-
-  --enable-iologdir[=DIR]
-	By default, sudo stores I/O log files in either /var/log/sudo-io,
-	/var/adm/sudo-sudo-io or /usr/log/sudo-io.  If DIR is
-	specified, I/O logs will be stored in the indicated directory
-	instead.
-
-  --enable-zlib[=DIR]
+  --enable-zlib[=location]
 	Enable the use of the zlib compress library when storing
-	I/O log files.  If specified, DIR is the base directory
-	containing the zlib include and lib directories.  By default
-	zlib is used if it is found on the system and I/O logging
-	support is not disabled.
+	I/O log files.  If specified, location is the base directory
+	containing the zlib include and lib directories.  The special
+	values "system" and "builtin" can be used to indicate that
+	the system version of zlib should be used or that the version
+	of zlib shipped with sudo should be used instead.
+	If this option is not specified, configure will use the
+	system zlib if it is present.
 
   --disable-zlib
         Disable the use of the zlib compress library when storing
@@ -627,9 +628,31 @@ The following options are also configurable at runtime:
   --enable-warnings
 	Enable compiler warnings when building sudo with gcc.
 
+  --enable-werror
+	Enable the -Werror compiler option when building sudo with gcc.
+
   --enable-admin-flag
 	Enable the creation of an Ubuntu-style admin flag file
 	the first time sudo is run.
+
+  --disable-env-reset
+        Disable environment resetting.  This sets the default value
+        of the "env_reset" Defaults option in sudoers to false.
+
+  --enable-nls[=location]
+        Enable natural language support using the gettext() family
+        of functions.  If specified, location is the base directory
+        containing the libintl include and lib directories.  If
+        this option is not specified, configure will look for the
+        gettext() family of functions in the standard C library
+        first, then check for a standalone libintl (linking with
+        libiconv as needed).
+
+  --disable-nls
+        Disable natural language support.  By default, sudo will
+        use the gettext() family of functions, if available, to
+        implement messages in the invoking user's native language.
+	Note that translations do not exist for all languages.
 
 Shadow password and C2 support
 ==============================
@@ -690,14 +713,15 @@ Solaris 2.x:
     CD.  You can also get them from various places on the net,
     including http://www.sunfreeware.com/
     NOTE: sudo will *not* build with the sun C compiler in BSD
-	  compatibility mode (/usr/ucb/cc).  Sudo is designed to
-	  compile with the standard C compiler (or gcc) and will
-	  not build correctly with /usr/ucb/cc.  You can use the
-	  `--with-CC' option to point `configure' to the non-ucb
-	  compiler if it is not the first cc in your path.  Some
-	  sites link /usr/ucb/cc to gcc; configure will not notice
-	  this and still refuse to use /usr/ucb/cc, so make sure gcc
-	  is also in your path if your site is setup this way.
+          compatibility mode (/usr/ucb/cc).  Sudo is designed to
+          compile with the standard C compiler (or gcc) and will
+          not build correctly with /usr/ucb/cc.  You can set the
+          CC environment variable to the non-ucb compiler when
+          running `configure' if it is not the first cc in your
+          path.  Some sites link /usr/ucb/cc to gcc; configure will
+          not notice this and still refuse to use /usr/ucb/cc, so
+          make sure gcc is also in your path if your site is setup
+          this way.
     Also: Older versions of Solaris come with a broken syslogd.
 	  If you have having problems with sudo logging you should
 	  make sure you have the latest syslogd patch installed.
@@ -712,16 +736,20 @@ Mac OS X:
     is bug id #7952709.
 
 HP-UX:
-    The default C compiler shipped with HP-UX does not support
-    creating position independent code and so is unable to support
-    sudo's "noexec" functionality.  You must use either the HP ANSI
-    C compiler or gcc for noexec to work.  Binary packages of gcc
-    are available http://hpux.connect.org.uk/.
+    The default C compiler shipped with HP-UX is not an ANSI compiler.
+    You must use either the HP ANSI C compiler or gcc to build sudo.
+    Binary packages of gcc are available from http://hpux.connect.org.uk/.
 
     To prevent PAM from overriding the value of umask on HP-UX 11,
     you will need to add a line like the following to /etc/pam.conf:
 
     sudo	session	required	libpam_hpsec.so.1 bypass_umask
+
+    If every command run via sudo displays information about the last
+    successful login and the last authentication failure you should
+    make use an /etc/pam.conf line like:
+
+    sudo	session	required	libpam_hpsec.so.1 bypass_umask bypass_last_login
 
 Digital UNIX:
     By default, sudo will use SIA (Security Integration Architecture)
@@ -752,12 +780,18 @@ SCO ODT:
     and /SLS/lng225b.ltr.Z.
 
 SunOS 4.x:
+    SunOS does not ship with an ANSI C compiler.  You will need to
+    install an ANSI compiler such as gcc to build sudo.
+
     The /bin/sh shipped with SunOS blows up while running configure.
     You can work around this by installing bash or zsh.  If you
     have bash or zsh in your path, configure will use it instead
     automatically.
 
 ULTRIX 4.x:
+    ULTRIX does not ship with an ANSI C compiler.  You will need to
+    install an ANSI compiler such as gcc to build sudo.
+
     The /bin/sh shipped with ULTRIX blows up while running configure.
     You can work around this by installing bash or zsh.  If you
     have bash or zsh in your path, configure will use it instead
