@@ -2,8 +2,10 @@ Source: sudo
 Section: admin
 Priority: optional
 Maintainer: Bdale Garbee <bdale@gag.com>
-Build-Depends: debhelper (>= 7), libpam0g-dev, libldap2-dev, libsasl2-dev, autotools-dev, bison, flex
-Standards-Version: 3.9.1
+Build-Depends: debhelper (>= 7), libpam0g-dev, libldap2-dev, libsasl2-dev, libselinux1-dev [linux-any], autoconf, autotools-dev, bison, flex
+Standards-Version: 3.9.3
+Vcs-Git: git://git.gag.com/debian/sudo
+Vcs-Browser: http://git.gag.com/?p=debian/sudo
 
 Package: sudo
 Architecture: any

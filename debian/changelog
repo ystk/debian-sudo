@@ -1,17 +1,144 @@
-sudo (1.7.4p4-2.squeeze.2) stable; urgency=low
+sudo (1.8.5p2-1+nmu1) unstable; urgency=high
 
-  * patch from upstream to resolve interoperability problem between HOME in
-    env_keep and the -H flag, originally closed #596493, applying this to
-    to squeeze also closes: #614232
+  * Non-maintainer upload by the Security Team.
+  * Fix cve-2013-1775: authentication bypass when the clock is set to the UNIX
+    epoch [00:00:00 UTC on 1 January 1970] (closes: #701838).
+  * Fix cve-2013-1776: session id hijacking from another authorized tty
+    (closes: #701839).
 
- -- Bdale Garbee <bdale@gag.com>  Sun, 20 Feb 2011 09:35:07 -0700
+ -- Michael Gilbert <mgilbert@debian.org>  Fri, 01 Mar 2013 03:26:37 +0000
 
-sudo (1.7.4p4-2.squeeze.1) testing; urgency=low
+sudo (1.8.5p2-1) unstable; urgency=low
 
+  * new upstream version
+  * patch to use flock on hurd, run autoconf in rules, closes: #655883
+  * patch to avoid calling unlink with null pointer on hurd, closes: #655948
+  * patch to actually use hardening build flags, closes: #655417
+  * fix sudo-ldap.postinst syntax issue, closes: #669576
+
+ -- Bdale Garbee <bdale@gag.com>  Thu, 28 Jun 2012 12:01:37 -0600
+
+sudo (1.8.3p2-1) unstable; urgency=high
+
+  * new upstream version, closes: #657985 (CVE-2012-0809)
+  * patch from Pino Toscano to only use selinux on Linux, closes: #655894
+
+ -- Bdale Garbee <bdale@gag.com>  Mon, 30 Jan 2012 16:11:54 -0700
+
+sudo (1.8.3p1-3) unstable; urgency=low
+
+  * patch from Moritz Muehlenhoff enables hardened build flags, closes: #655417
+  * replacement postinst script from Mike Beattie using shell instead of Perl
+  * include systemd service file from Michael Stapelberg, closes: #639633
+  * add init.d status support, closes: #641782
+  * make sudo-ldap package manage a sudoers entry in nsswitch.conf,
+    closes: #610600, #639530
+  * enable mail_badpass in the default sudoers file, closes: #641218
+  * enable selinux support, closes: #655510
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 11 Jan 2012 16:18:13 -0700
+
+sudo (1.8.3p1-2) unstable; urgency=low
+
+  * if upgrading from squeeze, and the sudoers file is unmodified, avoid
+    the packaging system prompting the user about a change they didn't make
+    now that sudoers is a conffile, closes: #612532, #636049
+  * add a recommendation for the use of visudo to the sudoers.d/README file,
+    closes: #648104
+
+ -- Bdale Garbee <bdale@gag.com>  Sat, 12 Nov 2011 16:27:13 -0700
+
+sudo (1.8.3p1-1) unstable; urgency=low
+
+  * new upstream version, closes: #646478
+
+ -- Bdale Garbee <bdale@gag.com>  Thu, 27 Oct 2011 01:03:44 +0200
+
+sudo (1.8.3-1) unstable; urgency=low
+
+  * new upstream version, closes: #639391, #639568
+
+ -- Bdale Garbee <bdale@gag.com>  Sat, 22 Oct 2011 23:49:16 -0600
+
+sudo (1.8.2-2) unstable; urgency=low
+
+  [ Luca Capello ]
+  * debian/rules improvements, closes: #642535
+    + mv upstream sample.* files to the examples folder.
+    - do not call dh_installexamples.
+
+  [ Bdale Garbee ]
+  * patch from upstream for SIGBUS on sparc64, closes: #640304
+  * use common-session-noninteractive in the pam config to reduce log noise
+    when sudo is used in cron, etc, closes: #519700
+  * patch from Steven McDonald to fix segfault on startup under certain
+    conditions, closes: #639568
+  * add a NEWS entry regarding the secure_path change made in 1.8.2-1, 
+    closes: #639336
+
+ -- Bdale Garbee <bdale@gag.com>  Mon, 26 Sep 2011 21:55:56 -0600
+
+sudo (1.8.2-1) unstable; urgency=low
+
+  * new upstream version, closes: #637449, #621830
+  * include common-session in pam config, closes: #519700, #607199
+  * move secure_path from configure to default sudoers, closes: #85123, 85917
+  * improve sudoers self-documentation, closes: #613639
+  * drop --disable-setresuid since modern systems should not run 2.2 kernels
+  * lose the --with-devel configure option since it's breaking builds in
+    subdirectories for some reason
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 24 Aug 2011 13:33:11 -0600
+
+sudo (1.7.4p6-1) unstable; urgency=low
+
+  * new upstream version
+  * touch the right stamp name after configuring, closes: #611287
+  * patch from Svante Signell to fix build problem on Hurd, closes: #611290
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 09 Feb 2011 11:32:58 -0700
+
+sudo (1.7.4p4-6) unstable; urgency=low
+
+  * update /etc/sudoers.d/README now that sudoers is a conffile
   * patch from upstream to fix special case in password checking code
-    when only the gid is changing, closes #609641
+    when only the gid is changing, closes: #609641
 
- -- Bdale Garbee <bdale@gag.com>  Wed, 26 Jan 2011 09:08:12 +1000
+ -- Bdale Garbee <bdale@gag.com>  Tue, 11 Jan 2011 10:22:39 -0700
+
+sudo (1.7.4p4-5) unstable; urgency=low
+
+  * patch from Jakub Wilk to add noopt and nostrip build option support,
+    closes: #605580
+  * make sudoers a conffile, closes: #605130
+  * add descriptions to LSB init headers, closes: #604619
+  * change default sudoers %sudo entry to allow gid changes, closes: #602699
+  * add Vcs entries to the control file
+  * use debhelper install files instead of explicit installs in rules
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 01 Dec 2010 20:32:31 -0700
+
+sudo (1.7.4p4-4) unstable; urgency=low
+
+  * patch from upstream to resolve problem always prompting for a password
+    when run without a tty, closes: #599376
+  * patch from upstream to resolve interoperability problem between HOME in
+    env_keep and the -H flag, closes: #596493
+  * change path syntax to avoid tar error when /var/run/sudo exists but is
+    empty, closes: #598877
+
+ -- Bdale Garbee <bdale@gag.com>  Thu, 07 Oct 2010 15:59:06 -0600
+
+sudo (1.7.4p4-3) unstable; urgency=low
+
+  * make postinst clause for handling /var/run -> /var/lib transition less
+    fragile, closes: #585514
+  * cope with upstream's Makefile trying to install ChangeLog in our doc
+    directory, closes: #597389
+  * fix README.Debian to reflect that HOME is no longer preserved by default,
+    closes: #596847
+
+ -- Bdale Garbee <bdale@gag.com>  Tue, 21 Sep 2010 23:53:08 -0600
 
 sudo (1.7.4p4-2) unstable; urgency=low
 

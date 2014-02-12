@@ -6,32 +6,48 @@
 		name="sudo"
 		pp_kit_package="sudo"
 	fi
-	summary="Provide limited super-user priveleges to specific users"
+	summary="Provide limited super-user privileges to specific users"
 	description="Sudo is a program designed to allow a sysadmin to give \
 limited root privileges to users and log root activity.  \
 The basic philosophy is to give as few privileges as possible but \
 still allow people to get their work done."
 	vendor="Todd C. Miller"
-	copyright="(c) 1993-1996,1998-2010 Todd C. Miller"
+	copyright="(c) 1993-1996,1998-2012 Todd C. Miller"
+
+%if [aix]
+	# AIX package summary is limited to 40 characters
+	summary="Configurable super-user privileges"
 
 	# Convert to 4 part version for AIX, including patch level
-	pp_aix_version=`echo $version|sed -e 's/\([0-9]*\.[0-9]*\.[0-9]*\)$/\1.0/' -e 's/[^0-9]*\([0-9]*\)$/.\1/'`
+	pp_aix_version=`echo $version|sed -e 's/^\([0-9]*\.[0-9]*\.[0-9]*\)p\([0-9]*\)$/\1.\2/' -e 's/^\([0-9]*\.[0-9]*\.[0-9]*\)[^0-9\.].*$/\1/' -e 's/^\([0-9]*\.[0-9]*\.[0-9]*\)$/\1.0/'`
+%endif
 
-	# Strip of patchlevel for kit which only supports x.y.z versions
-	pp_kit_version="`echo $version|sed -e 's/\.//g' -e 's/p[0-9]*$//'`"
+%if [kit]
+	# Strip off patchlevel for kit which only supports xyz versions
+	pp_kit_version="`echo $version|sed -e 's/\.//g' -e 's/[^0-9][^0-9]*[0-9][0-9]*$//'`"
 	pp_kit_name="TCM"
+%endif
 
+%if [sd]
 	pp_sd_vendor_tag="TCM"
+%endif
+
+%if [solaris]
 	pp_solaris_name="TCM${name}"
+	pp_solaris_pstamp=`/usr/bin/date "+%B %d, %Y"`
+%endif
+
 %if [rpm,deb]
 	# Convert patch level into release and remove from version
-	pp_rpm_release="`echo $version|sed 's/^[0-9]*\.[0-9]*\.[0-9]*[^0-9]*//'`"
-	pp_rpm_release="`expr $pp_rpm_release + 1`"
-	pp_rpm_version="`echo $version|sed 's/p[0-9]*$//'`"
+	pp_rpm_release="`expr \( $version : '.*p\([0-9][0-9]*\)' \| 0 \) + 1`"
+	pp_rpm_version="`expr $version : '\(.*\)p[0-9][0-9]*'`"
 	pp_rpm_license="BSD"
 	pp_rpm_url="http://www.sudo.ws/"
 	pp_rpm_group="Applications/System"
 	pp_rpm_packager="Todd.Miller@courtesan.com"
+	if test -n "$linux_audit"; then
+		pp_rpm_requires="audit-libs >= $linux_audit"
+	fi
 
 	pp_deb_maintainer="$pp_rpm_packager"
 	pp_deb_release="$pp_rpm_release"
@@ -42,7 +58,7 @@ still allow people to get their work done."
 	mv ${pp_destdir}$sudoersdir/sudoers ${pp_destdir}$sudoersdir/sudoers.dist
 %endif
 
-%set [rpm]
+%if [rpm]
 	# Add distro info to release
 	osrelease=`echo "$pp_rpm_distro" | sed -e 's/^[^0-9]*//' -e 's/-.*$//'`
 	case "$pp_rpm_distro" in
@@ -58,14 +74,17 @@ still allow people to get their work done."
 	# Note that the order must match that of sudoers.
 	case "$pp_rpm_distro" in
 	centos*|rhel*)
+		chmod u+w ${pp_destdir}${sudoersdir}/sudoers
 		/bin/ed - ${pp_destdir}${sudoersdir}/sudoers <<-'EOF'
 		/Locale settings/+1,s/^# //
 		/Desktop path settings/+1,s/^# //
 		w
 		q
 		EOF
+		chmod u-w ${pp_destdir}${sudoersdir}/sudoers
 		;;
 	sles*)
+		chmod u+w ${pp_destdir}${sudoersdir}/sudoers
 		/bin/ed - ${pp_destdir}${sudoersdir}/sudoers <<-'EOF'
 		/Locale settings/+1,s/^# //
 		/ConsoleKit session/+1,s/^# //
@@ -74,6 +93,7 @@ still allow people to get their work done."
 		w
 		q
 		EOF
+		chmod u-w ${pp_destdir}${sudoersdir}/sudoers
 		;;
 	esac
 
@@ -136,10 +156,12 @@ still allow people to get their work done."
 		fi
 		;;
 	esac
+%endif
 
-%set [deb]
+%if [deb]
 	# Uncomment some Defaults and the %sudo rule in sudoers
 	# Note that the order must match that of sudoers and be tab-indented.
+	chmod u+w ${pp_destdir}${sudoersdir}/sudoers
 	/bin/ed - ${pp_destdir}${sudoersdir}/sudoers <<-'EOF'
 	/Locale settings/+1,s/^# //
 	/X11 resource/+1,s/^# //
@@ -147,6 +169,7 @@ still allow people to get their work done."
 	w
 	q
 	EOF
+	chmod u-w ${pp_destdir}${sudoersdir}/sudoers
 	mkdir -p ${pp_destdir}/etc/pam.d
 	cat > ${pp_destdir}/etc/pam.d/sudo <<-EOF
 	#%PAM-1.0
@@ -157,21 +180,44 @@ still allow people to get their work done."
 	session required pam_permit.so
 	session required pam_limits.so
 	EOF
+%endif
 
-%set [aix]
-	summary="Configurable super-user privileges"
+%if [macos]
+	pp_macos_pkg_type=flat
+	pp_macos_bundle_id=ws.sudo.pkg.sudo
+	pp_macos_pkg_license=doc/LICENSE
+	pp_macos_pkg_readme=${pp_wrkdir}/ReadMe.txt
+	perl -pe 'last if (/^What/i && $seen++)' NEWS > ${pp_wrkdir}/ReadMe.txt
+%endif
+
+	# OS-level directories that should generally exist but might not.
+	extradirs=`echo ${pp_destdir}/${mandir}/[mc]* | sed "s#${pp_destdir}/##g"`
+	extradirs="$extradirs `dirname $docdir` `dirname $timedir`"
+	test -d ${pp_destdir}/etc/pam.d && extradirs="${extradirs} /etc/pam.d"
+	for dir in $bindir $sbindir $libexecdir $includedir $extradirs; do
+		while test "$dir" != "/"; do
+			osdirs="${osdirs}${osdirs+ }$dir/"
+			dir=`dirname $dir`
+		done
+	done
+	osdirs=`echo $osdirs | tr " " "\n" | sort -u`
 
 %files
-	$bindir/sudo        4111 root:
-	$bindir/sudoedit    4111 root:
-	$sbindir/visudo     0111
-	$bindir/sudoreplay  0111
-	$libexecdir/*
+	$osdirs			-
+	$bindir/sudo        	4111 root:
+	$bindir/sudoedit    	4111 root:
+	$sbindir/visudo     	0111
+	$bindir/sudoreplay  	0111
+	$includedir/sudo_plugin.h 0444
+	$libexecdir/*		0755 optional
 	$sudoersdir/sudoers.d/	0750 $sudoers_uid:$sudoers_gid
 	$timedir/		0700 root:
-	$docdir/
-	$docdir/*
-	/etc/pam.d/*		volatile,optional
+	$docdir/		0755
+	$docdir/sudoers2ldif	0555 optional,ignore-others
+	$docdir/*		0444
+	$localedir/		-    optional
+	$localedir/**		0444 optional
+	/etc/pam.d/*		0444 volatile,optional
 %if [rpm,deb]
 	$sudoersdir/sudoers $sudoers_mode $sudoers_uid:$sudoers_gid volatile
 %else
@@ -188,9 +234,16 @@ still allow people to get their work done."
 
 %post [!rpm,deb]
 	# Don't overwrite an existing sudoers file
+%if [solaris]
+	sudoersdir=${PKG_INSTALL_ROOT}%{sudoersdir}
+%else
 	sudoersdir=%{sudoersdir}
+%endif
 	if test ! -r $sudoersdir/sudoers; then
-		cp -p $sudoersdir/sudoers.dist $sudoersdir/sudoers
+		cp $sudoersdir/sudoers.dist $sudoersdir/sudoers
+		chmod %{sudoers_mode} $sudoersdir/sudoers
+		chown %{sudoers_uid} $sudoersdir/sudoers
+		chgrp %{sudoers_gid} $sudoersdir/sudoers
 	fi
 
 %post [deb]

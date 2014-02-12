@@ -1,3 +1,19 @@
+sudo (1.8.2-1) unstable; urgency=low
+
+  The sudo package is no longer configured using --with-secure-path.
+  Instead, the provided sudoers file now contains a line declaring
+  'Defaults secure_path=' with the same path content that was previously
+  hard-coded in the binary.  A consequence of this change is that if you
+  do not have such a definition in sudoers, the PATH searched for commands
+  by sudo may be empty.
+
+  Using explicit paths for each command you want to run with sudo will work
+  well enough to allow the sudoers file to be updated with a suitable entry
+  if one is not already present and you choose to not accept the updated
+  version provided by the package.
+  
+ -- Bdale Garbee <bdale@gag.com>  Wed, 24 Aug 2011 13:33:11 -0600
+
 sudo (1.7.4p4-2) unstable; urgency=low
 
   The HOME and MAIL environment variables are now reset based on the

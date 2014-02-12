@@ -2,24 +2,34 @@
 
 export DH_VERBOSE=1
 
-CFLAGS = -O2 -Wall -Wno-comment
-ifneq (,$(findstring debug,$(DEB_BUILD_OPTIONS)))
-CFLAGS += -g
+CFLAGS = `dpkg-buildflags --get CFLAGS`
+CFLAGS += -Wall -Wno-comment
+LDFLAGS = `dpkg-buildflags --get LDFLAGS`
+CPPFLAGS = `dpkg-buildflags --get CPPFLAGS`
+
+DEB_HOST_ARCH_OS ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
+ifeq ($(DEB_HOST_ARCH_OS),linux)
+  configure_args += --with-selinux
 endif
-export CFLAGS
+
+reconf-stamp:
+	cp -f /usr/share/misc/config.sub config.sub
+	cp -f /usr/share/misc/config.guess config.guess
+	autoconf -I m4
+	touch $@
 
 configure: configure-stamp
-configure-stamp:
+configure-stamp: reconf-stamp
 	dh_testdir
 	cp -f /usr/share/misc/config.sub config.sub
 	cp -f /usr/share/misc/config.guess config.guess
 
 	# simple version
 	mkdir -p build-simple
-	cd build-simple && NROFFPROG=/usr/bin/nroff $(CURDIR)/configure \
+	cd build-simple && NROFFPROG=/usr/bin/nroff CFLAGS="$(CFLAGS)" \
+	    CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" $(CURDIR)/configure \
 		--prefix=/usr -v \
 		--with-all-insults \
-		--with-devel \
 		--with-pam \
 		--with-fqdn \
 		--with-logging=syslog \
@@ -29,20 +39,19 @@ configure-stamp:
 		--with-timeout=15 \
 		--with-password-timeout=0 \
 		--with-passprompt="[sudo] password for %p: " \
-		--with-timedir=/var/lib/sudo \
 		--disable-root-mailer \
-		--disable-setresuid \
 		--with-sendmail=/usr/sbin/sendmail \
+		--with-timedir=/var/lib/sudo \
 		--mandir=/usr/share/man \
 		--libexecdir=/usr/lib/sudo \
-		--with-secure-path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/X11R6/bin"
+		$(configure_args)
 
 	# LDAP version
 	mkdir -p build-ldap
-	cd build-ldap && NROFFPROG=/usr/bin/nroff $(CURDIR)/configure \
+	cd build-ldap && NROFFPROG=/usr/bin/nroff CFLAGS="$(CFLAGS)" \
+	    CPPFLAGS="$(CPPFLAGS)" LDFLAGS="$(LDFLAGS)" $(CURDIR)/configure \
 		--prefix=/usr -v \
 		--with-all-insults \
-		--with-devel \
 		--with-pam \
 		--with-ldap \
 		--with-fqdn \
@@ -61,24 +70,28 @@ configure-stamp:
 		--libexecdir=/usr/lib/sudo \
 		--with-secure-path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/X11R6/bin"
 
-	touch config-stamp
+	touch configure-stamp
 
-build: build-stamp
+build: build-arch build-indep
+build-arch: build-stamp
+build-indep: build-stamp
 build-stamp: configure-stamp
 	dh_testdir
 
 	# ensure our pod changes get picked up
-	$(MAKE) sudoers.man.in sudo.man.in visudo.man.in
+	$(MAKE) -C doc sudoers.man.in sudo.man.in visudo.man.in
 
 	$(MAKE) -C build-simple
 	$(MAKE) -C build-ldap
+
+	$(MAKE) -C build-simple check
 
 	touch build-stamp
 
 clean:
 	dh_testdir
 	dh_testroot
-	rm -f config-stamp build-stamp
+	rm -f configure-stamp build-stamp
 	rm -rf build-simple build-ldap
 	rm -f config.cache
 	dh_clean
@@ -93,15 +106,20 @@ install: build-stamp
 	$(MAKE) -C build-ldap   install DESTDIR=$(CURDIR)/debian/sudo-ldap
 
 	# remove stuff we don't want
-	rm -f	debian/sudo/etc/sudoers \
-		debian/sudo-ldap/etc/sudoers \
-		debian/sudo/usr/share/doc/sudo/LICENSE* \
-		debian/sudo-ldap/usr/share/doc/sudo/LICENSE*
+	rm -f	debian/sudo*/etc/sudoers \
+		debian/sudo*/usr/share/doc/sudo/LICENSE* \
+		debian/sudo*/usr/share/doc/sudo/ChangeLog
 
 	# move upstream-installed docs to the right place for ldap package
 	mv	debian/sudo-ldap/usr/share/doc/sudo/* \
 		debian/sudo-ldap/usr/share/doc/sudo-ldap/
 	rmdir	debian/sudo-ldap/usr/share/doc/sudo
+
+	# move sample files to the examples folder
+	mv	debian/sudo/usr/share/doc/sudo/sample.* \
+		debian/sudo/usr/share/doc/sudo/examples/
+	mv	debian/sudo-ldap/usr/share/doc/sudo-ldap/sample.* \
+		debian/sudo-ldap/usr/share/doc/sudo-ldap/examples/
 
 	# and install things we do want that make install doesn't know about
 	install -o root -g root -m 0644 debian/sudo.pam \
@@ -114,10 +132,20 @@ install: build-stamp
 	install -o root -g root -m 0644 debian/sudo-ldap.lintian \
 		debian/sudo-ldap/usr/share/lintian/overrides/sudo-ldap
 
+	install -o root -g root -m 0440 debian/sudoers \
+		debian/sudo/etc/sudoers
+	install -o root -g root -m 0440 debian/sudoers \
+		debian/sudo-ldap/etc/sudoers
+
 	install -o root -g root -m 0440 debian/README \
 		debian/sudo/etc/sudoers.d/README
 	install -o root -g root -m 0440 debian/README \
 		debian/sudo-ldap/etc/sudoers.d/README
+
+	install -o root -g root -m 0644 debian/sudo.service \
+		debian/sudo/lib/systemd/system/sudo.service
+	install -o root -g root -m 0644 debian/sudo.service \
+		debian/sudo-ldap/lib/systemd/system/sudo.service
 
 binary-indep: build install
 
@@ -125,7 +153,6 @@ binary-arch: build install
 	dh_testdir
 	dh_testroot
 	dh_installdocs -A
-	dh_installexamples -A sample.sudoers
 	dh_installinit -psudo -psudo-ldap --name=sudo
 	dh_installman -A
 	dh_installinfo -A
@@ -144,4 +171,4 @@ binary-arch: build install
 	dh_builddeb
 
 binary: binary-indep binary-arch
-.PHONY: configure build clean binary-indep binary-arch binary install
+.PHONY: configure build-indep build-arch build clean binary-indep binary-arch binary install

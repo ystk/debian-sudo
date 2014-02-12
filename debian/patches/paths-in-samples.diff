@@ -1,5 +1,5 @@
---- /home/bdale/Desktop/sudo-1.7.2p1/sample.sudoers	2008-10-03 13:55:57.000000000 -0600
-+++ sudo/sample.sudoers	2009-11-20 07:31:58.000000000 -0700
+--- /home/bdale/Desktop/sudo-1.7.2p1/doc/sample.sudoers	2008-10-03 13:55:57.000000000 -0600
++++ sudo/doc/sample.sudoers	2009-11-20 07:31:58.000000000 -0700
 @@ -46,8 +46,8 @@
  # Cmnd alias specification
  ##

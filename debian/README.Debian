@@ -2,9 +2,8 @@ The version of sudo that ships with Debian by default resets the
 environment, as described by the "env_reset" flag in the sudoers file.
 
 This implies that all environment variables are removed, except for
-HOME, LOGNAME, PATH, SHELL, TERM, DISPLAY, XAUTHORITY, XAUTHORIZATION,
-XAPPLRESDIR, XFILESEARCHPATH, XUSERFILESEARCHPATH, LANG, LANGUAGE, LC_*, 
-and USER.
+LOGNAME, PATH, SHELL, TERM, DISPLAY, XAUTHORITY, XAUTHORIZATION, XAPPLRESDIR, 
+XFILESEARCHPATH, XUSERFILESEARCHPATH, LANG, LANGUAGE, LC_*, and USER.
 
 In case you want sudo to preserve more environment variables, you must
 specify the env_keep variable in the sudoers file. You should edit the

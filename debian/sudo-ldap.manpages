@@ -1,4 +1,4 @@
-build-ldap/sudo.man
-build-ldap/sudoers.man
-build-ldap/sudoers.ldap.man
-build-ldap/visudo.man
+build-ldap/doc/sudo.man
+build-ldap/doc/sudoers.man
+build-ldap/doc/sudoers.ldap.man
+build-ldap/doc/visudo.man

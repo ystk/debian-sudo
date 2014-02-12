@@ -1,4 +1,5 @@
 typo-in-classic-insults.diff
-env.c-safety.diff
 paths-in-samples.diff
-debian-changes-1.7.4p4-2.squeeze.2
+actually-use-buildflags.diff
+cve-2013-1775.patch
+cve-2013-1776.patch
