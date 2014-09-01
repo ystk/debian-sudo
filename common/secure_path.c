@@ -18,7 +18,6 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/param.h>
 #include <stdio.h>
 #ifdef HAVE_STRING_H
 # include <string.h>
@@ -39,13 +38,13 @@
  * Verify that path is the right type and not writable by other users.
  */
 int
-sudo_secure_path(const char *path, int type, uid_t uid, gid_t gid, struct stat *sbp)
+sudo_secure_path(const char *path, unsigned int type, uid_t uid, gid_t gid, struct stat *sbp)
 {
     struct stat sb;
     int rval = SUDO_PATH_MISSING;
     debug_decl(sudo_secure_path, SUDO_DEBUG_UTIL)
 
-    if (path != NULL && stat_sudoers(path, &sb) == 0) {
+    if (path != NULL && stat(path, &sb) == 0) {
 	if ((sb.st_mode & _S_IFMT) != type) {
 	    rval = SUDO_PATH_BAD_TYPE;
 	} else if (uid != (uid_t)-1 && sb.st_uid != uid) {

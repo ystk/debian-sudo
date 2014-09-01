@@ -62,13 +62,13 @@
 #define I_STAY_SETUID           30
 #define def_preserve_groups     (sudo_defs_table[31].sd_un.flag)
 #define I_PRESERVE_GROUPS       31
-#define def_loglinelen          (sudo_defs_table[32].sd_un.ival)
+#define def_loglinelen          (sudo_defs_table[32].sd_un.uival)
 #define I_LOGLINELEN            32
 #define def_timestamp_timeout   (sudo_defs_table[33].sd_un.fval)
 #define I_TIMESTAMP_TIMEOUT     33
 #define def_passwd_timeout      (sudo_defs_table[34].sd_un.fval)
 #define I_PASSWD_TIMEOUT        34
-#define def_passwd_tries        (sudo_defs_table[35].sd_un.ival)
+#define def_passwd_tries        (sudo_defs_table[35].sd_un.uival)
 #define I_PASSWD_TRIES          35
 #define def_umask               (sudo_defs_table[36].sd_un.mode)
 #define I_UMASK                 36
@@ -158,6 +158,22 @@
 #define I_SET_UTMP              78
 #define def_utmp_runas          (sudo_defs_table[79].sd_un.flag)
 #define I_UTMP_RUNAS            79
+#define def_privs               (sudo_defs_table[80].sd_un.str)
+#define I_PRIVS                 80
+#define def_limitprivs          (sudo_defs_table[81].sd_un.str)
+#define I_LIMITPRIVS            81
+#define def_exec_background     (sudo_defs_table[82].sd_un.flag)
+#define I_EXEC_BACKGROUND       82
+#define def_pam_service         (sudo_defs_table[83].sd_un.str)
+#define I_PAM_SERVICE           83
+#define def_pam_login_service   (sudo_defs_table[84].sd_un.str)
+#define I_PAM_LOGIN_SERVICE     84
+#define def_pam_setcred         (sudo_defs_table[85].sd_un.flag)
+#define I_PAM_SETCRED           85
+#define def_pam_session         (sudo_defs_table[86].sd_un.flag)
+#define I_PAM_SESSION           86
+#define def_maxseq              (sudo_defs_table[87].sd_un.uival)
+#define I_MAXSEQ                87
 
 enum def_tuple {
 	never,

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 1998-2005, 2008, 2009-2010
+ * Copyright (c) 1996, 1998-2005, 2008, 2009-2013
  *	Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -23,23 +23,97 @@
 #define _SUDO_MISSING_H
 
 #include <stdio.h>
+#ifdef STDC_HEADERS
+# include <stddef.h>
+#endif
 #include <stdarg.h>
 
 /*
  * Macros and functions that may be missing on some operating systems.
  */
 
+#ifndef __GNUC_PREREQ__
+# ifdef __GNUC__
+#  define __GNUC_PREREQ__(ma, mi) \
+	((__GNUC__ > (ma)) || (__GNUC__ == (ma) && __GNUC_MINOR__ >= (mi)))
+# else
+#  define __GNUC_PREREQ__(ma, mi)	0
+# endif
+#endif
+
 /* Define away __attribute__ for non-gcc or old gcc */
-#if !defined(__GNUC__) || __GNUC__ < 2 || __GNUC__ == 2 && __GNUC_MINOR__ < 5
+#if !defined(__attribute__) && !__GNUC_PREREQ__(2, 5)
 # define __attribute__(x)
 #endif
 
 /* For catching format string mismatches */
 #ifndef __printflike
-# if defined(__GNUC__) && (__GNUC__ > 2 || __GNUC__ == 2 && __GNUC_MINOR__ >= 7)
+# if __GNUC_PREREQ__(3, 3)
+#  define __printflike(f, v) 	__attribute__((__format__ (__printf__, f, v))) __attribute__((__nonnull__ (f)))
+# elif __GNUC_PREREQ__(2, 7)
 #  define __printflike(f, v) 	__attribute__((__format__ (__printf__, f, v)))
 # else
 #  define __printflike(f, v)
+# endif
+#endif
+#ifndef __printf0like
+# if __GNUC_PREREQ__(2, 7)
+#  define __printf0like(f, v) 	__attribute__((__format__ (__printf__, f, v)))
+# else
+#  define __printf0like(f, v)
+# endif
+#endif
+#ifndef __format_arg
+# if __GNUC_PREREQ__(2, 7)
+#  define __format_arg(f) 	__attribute__((__format_arg__ (f)))
+# else
+#  define __format_arg(f)
+# endif
+#endif
+
+/* Hint to compiler that returned pointer is unique (malloc but not realloc). */
+#ifndef __malloc_like
+# if __GNUC_PREREQ__(2, 96)
+#  define __malloc_like 	__attribute__((__malloc__))
+# else
+#  define __malloc_like
+# endif
+#endif
+
+/*
+ * Given the pointer x to the member m of the struct s, return
+ * a pointer to the containing structure.
+ */
+#ifndef __containerof
+# define __containerof(x, s, m)	((s *)((char *)(x) - offsetof(s, m)))
+#endif
+
+#ifndef __dso_public
+# ifdef HAVE_DSO_VISIBILITY
+#  if defined(__GNUC__)
+#   define __dso_public	__attribute__((__visibility__("default")))
+#   define __dso_hidden	__attribute__((__visibility__("hidden")))
+#  elif defined(__SUNPRO_C)
+#   define __dso_public	__global
+#   define __dso_hidden __hidden
+#  else
+#   define __dso_public	__declspec(dllexport)
+#   define __dso_hidden
+#  endif
+# else
+#  define __dso_public
+#  define __dso_hidden
+# endif
+#endif
+
+/*
+ * Pre-C99 compilers may lack a va_copy macro.
+ */
+#ifndef va_copy
+# ifdef __va_copy
+#  define va_copy(d, s) __va_copy(d, s)
+# else
+#  define va_copy(d, s) memcpy(&(d), &(s), sizeof(d));
 # endif
 #endif
 
@@ -50,24 +124,44 @@
 # define OPEN_MAX	256
 #endif
 
-#ifndef INT_MAX
-# define INT_MAX	0x7fffffff
-#endif
-
-#ifndef PATH_MAX
-# ifdef MAXPATHLEN
-#  define PATH_MAX		MAXPATHLEN
+#ifndef LLONG_MAX
+# if defined(QUAD_MAX)
+#  define LLONG_MAX	QUAD_MAX
 # else
-#  ifdef _POSIX_PATH_MAX
-#   define PATH_MAX		_POSIX_PATH_MAX
-#  else
-#   define PATH_MAX		1024
-#  endif
+#  define LLONG_MAX	0x7fffffffffffffffLL
 # endif
 #endif
 
-#ifndef MAXHOSTNAMELEN
-# define MAXHOSTNAMELEN		64
+#ifndef LLONG_MIN
+# if defined(QUAD_MIN)
+#  define LLONG_MIN	QUAD_MIN
+# else
+#  define LLONG_MIN	(-0x7fffffffffffffffLL-1)
+# endif
+#endif
+
+#ifndef ULLONG_MAX
+# if defined(UQUAD_MAX)
+#  define ULLONG_MAX	UQUAD_MAX
+# else
+#  define ULLONG_MAX	0xffffffffffffffffULL
+# endif
+#endif
+
+#ifndef PATH_MAX
+# ifdef _POSIX_PATH_MAX
+#  define PATH_MAX		_POSIX_PATH_MAX
+# else
+#  define PATH_MAX		256
+# endif
+#endif
+
+#ifndef HOST_NAME_MAX
+# ifdef _POSIX_HOST_NAME_MAX
+#  define HOST_NAME_MAX		_POSIX_HOST_NAME_MAX
+# else
+#  define HOST_NAME_MAX		255
+# endif
 #endif
 
 /*
@@ -113,7 +207,7 @@
 #endif
 
 /*
- * BSD defines these in <sys/param.h> but others may not.
+ * BSD defines these in <sys/param.h> but we don't include that anymore.
  */
 #ifndef MIN
 # define MIN(a,b) (((a)<(b))?(a):(b))
@@ -121,6 +215,14 @@
 #ifndef MAX
 # define MAX(a,b) (((a)>(b))?(a):(b))
 #endif
+
+/* Macros to set/clear/test flags. */
+#undef SET
+#define SET(t, f)	((t) |= (f))
+#undef CLR
+#define CLR(t, f)	((t) &= ~(f))
+#undef ISSET
+#define ISSET(t, f)     ((t) & (f))
 
 /*
  * Older systems may be missing stddef.h and/or offsetof macro
@@ -197,11 +299,10 @@ typedef struct sigaction sigaction_t;
 #ifndef HAVE_GETPROGNAME
 # ifdef HAVE___PROGNAME
 extern const char *__progname;
-#  define getprogname()          (__progname)
+#  define getprogname()		(__progname)
 # else
 const char *getprogname(void);
-void setprogname(const char *);
-#endif /* HAVE___PROGNAME */
+# endif /* HAVE___PROGNAME */
 #endif /* !HAVE_GETPROGNAME */
 
 /*
@@ -257,6 +358,11 @@ extern int errno;
 # endif
 #endif
 
+/* For sig2str() */
+#ifndef SIG2STR_MAX
+# define SIG2STR_MAX 32
+#endif
+
 #ifndef WCOREDUMP
 # define WCOREDUMP(x)	((x) & 0x80)
 #endif
@@ -307,17 +413,25 @@ int utimes(const char *, const struct timeval *);
 #ifdef HAVE_FUTIME
 int futimes(int, const struct timeval *);
 #endif
-#ifndef HAVE_SNPRINTF
-int snprintf(char *, size_t, const char *, ...) __printflike(3, 4);
+#if !defined(HAVE_SNPRINTF) || defined(PREFER_PORTABLE_SNPRINTF)
+int rpl_snprintf(char *, size_t, const char *, ...) __printflike(3, 4);
+# undef snprintf
+# define snprintf rpl_snprintf
 #endif
-#ifndef HAVE_VSNPRINTF
-int vsnprintf(char *, size_t, const char *, va_list) __printflike(3, 0);
+#if !defined(HAVE_VSNPRINTF) || defined(PREFER_PORTABLE_SNPRINTF)
+int rpl_vsnprintf(char *, size_t, const char *, va_list) __printflike(3, 0);
+# undef vsnprintf
+# define vsnprintf rpl_vsnprintf
 #endif
-#ifndef HAVE_ASPRINTF
-int asprintf(char **, const char *, ...) __printflike(2, 3);
+#if !defined(HAVE_ASPRINTF) || defined(PREFER_PORTABLE_SNPRINTF)
+int rpl_asprintf(char **, const char *, ...) __printflike(2, 3);
+# undef asprintf
+# define asprintf rpl_asprintf
 #endif
-#ifndef HAVE_VASPRINTF
-int vasprintf(char **, const char *, va_list) __printflike(2, 0);
+#if !defined(HAVE_VASPRINTF) || defined(PREFER_PORTABLE_SNPRINTF)
+int rpl_vasprintf(char **, const char *, va_list) __printflike(2, 0);
+# undef vasprintf
+# define vasprintf rpl_vasprintf
 #endif
 #ifndef HAVE_STRLCAT
 size_t strlcat(char *, const char *, size_t);
@@ -328,14 +442,14 @@ size_t strlcpy(char *, const char *, size_t);
 #ifndef HAVE_MEMRCHR
 void *memrchr(const void *, int, size_t);
 #endif
+#ifndef HAVE_MEMSET_S
+errno_t memset_s(void *, rsize_t, int, rsize_t);
+#endif
 #ifndef HAVE_MKDTEMP
 char *mkdtemp(char *);
 #endif
 #ifndef HAVE_MKSTEMPS
 int mkstemps(char *, int);
-#endif
-#ifndef HAVE_NANOSLEEP
-int nanosleep(const struct timespec *, struct timespec *);
 #endif
 #ifndef HAVE_PW_DUP
 struct passwd *pw_dup(const struct passwd *);
@@ -348,6 +462,14 @@ int unsetenv(const char *);
 #endif
 #ifndef HAVE_STRSIGNAL
 char *strsignal(int);
+#endif
+#ifndef HAVE_SIG2STR
+int sig2str(int, char *);
+#endif
+#ifndef HAVE_STRTONUM
+long long rpl_strtonum(const char *, long long, long long, const char **);
+# undef strtonum
+# define strtonum rpl_strtonum
 #endif
 
 #endif /* _SUDO_MISSING_H */

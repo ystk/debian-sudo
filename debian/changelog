@@ -1,12 +1,103 @@
-sudo (1.8.5p2-1+nmu1) unstable; urgency=high
+sudo (1.8.9p5-1) unstable; urgency=low
 
-  * Non-maintainer upload by the Security Team.
-  * Fix cve-2013-1775: authentication bypass when the clock is set to the UNIX
-    epoch [00:00:00 UTC on 1 January 1970] (closes: #701838).
-  * Fix cve-2013-1776: session id hijacking from another authorized tty
-    (closes: #701839).
+  * new upstream release, closes: #735328
 
- -- Michael Gilbert <mgilbert@debian.org>  Fri, 01 Mar 2013 03:26:37 +0000
+ -- Bdale Garbee <bdale@gag.com>  Tue, 04 Feb 2014 11:46:19 -0700
+
+sudo (1.8.9p4-1) unstable; urgency=low
+
+  * new upstream release, closes: #732008
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 15 Jan 2014 14:55:25 -0700
+
+sudo (1.8.9p3-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Bdale Garbee <bdale@gag.com>  Mon, 13 Jan 2014 14:49:42 -0700
+
+sudo (1.8.9~rc1-1) experimental; urgency=low
+
+  * upstream release candidate
+
+ -- Bdale Garbee <bdale@gag.com>  Sun, 29 Dec 2013 21:36:12 -0700
+
+sudo (1.8.9~b2-1) experimental; urgency=low
+
+  * upstream beta release
+  * update Debian standards version
+  * squelch lintian complaint about missing sudo-ldap systemd service, since 
+    the service file is always called 'sudo.service'
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 25 Dec 2013 14:48:23 -0700
+
+sudo (1.8.9~b1-1) experimental; urgency=low
+
+  * upstream beta release
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 27 Nov 2013 09:37:00 -0700
+
+sudo (1.8.8-3) unstable; urgency=low
+
+  * document in README.Debian that the sssd support is enabled in the sudo
+    package, not in the sudo-ldap package, closes: #728289
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 30 Oct 2013 10:33:44 -0600
+
+sudo (1.8.8-2) unstable; urgency=low
+
+  * fix touch errors on boot, closes: #725193
+
+ -- Bdale Garbee <bdale@gag.com>  Tue, 08 Oct 2013 20:11:38 -0600
+
+sudo (1.8.8-1) unstable; urgency=low
+
+  * new upstream release
+
+ -- Bdale Garbee <bdale@gag.com>  Mon, 30 Sep 2013 23:08:49 -0600
+
+sudo (1.8.8~rc1-1) experimental; urgency=low
+
+  * upstream release candidate with several of our patches folded in
+  * set filestamps to epoch instead of an arbitrary old date in the init
+    fragment, closes: #722335
+
+ -- Bdale Garbee <bdale@gag.com>  Thu, 12 Sep 2013 10:16:58 -0700
+
+sudo (1.8.8~b3-1) experimental; urgency=low
+
+  * pre-release of new upstream version, put in experimental
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 04 Sep 2013 07:53:08 -0600
+
+sudo (1.8.7-4) unstable; urgency=low
+
+  * looks like we actually need both --with-sssd and --with-sssd-lib,
+    closes: #719987, #724763
+
+ -- Bdale Garbee <bdale@gag.com>  Fri, 27 Sep 2013 11:48:55 -0600
+
+sudo (1.8.7-3) unstable; urgency=low
+
+  * use --with-sssd-lib to help sudo find libsss-sudo in multiarch path,
+    closes: #719987
+
+ -- Bdale Garbee <bdale@gag.com>  Sat, 17 Aug 2013 15:38:53 +0200
+
+sudo (1.8.7-2) unstable; urgency=low
+
+  * let debhelper scripts manage the update-rc.d calls, closes: #719755
+
+ -- Bdale Garbee <bdale@gag.com>  Fri, 16 Aug 2013 01:48:23 +0200
+
+sudo (1.8.7-1) unstable; urgency=low
+
+  * new upstream version, closes: #715157, #655879
+  * make sudo-ldap package's init.d script be called sudo-ldap
+  * add sssd support to sudo, closes: #719574
+  * recognize lenny, squeeze, and wheezy unmodified sudoers, closes: #660594
+
+ -- Bdale Garbee <bdale@gag.com>  Wed, 14 Aug 2013 00:01:14 +0200
 
 sudo (1.8.5p2-1) unstable; urgency=low
 

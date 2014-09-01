@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2011 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2010-2013 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,7 +17,6 @@
 #include <config.h>
 
 #include <sys/types.h>
-#include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 
@@ -139,11 +138,9 @@ policy_open(unsigned int version, sudo_conv_t conversation,
 	if (strncmp(*ui, "runas_group=", sizeof("runas_group=") - 1) == 0) {
 	    runas_group = *ui + sizeof("runas_group=") - 1;
 	}
-#if !defined(HAVE_GETPROGNAME) && !defined(HAVE___PROGNAME)
 	if (strncmp(*ui, "progname=", sizeof("progname=") - 1) == 0) {
-	    setprogname(*ui + sizeof("progname=") - 1);
+	    initprogname(*ui + sizeof("progname=") - 1);
 	}
-#endif
 	/* Check to see if sudo was called as sudoedit or with -e flag. */
 	if (strncmp(*ui, "sudoedit=", sizeof("sudoedit=") - 1) == 0) {
 	    if (strcasecmp(*ui + sizeof("sudoedit=") - 1, "true") == 0)
@@ -237,7 +234,7 @@ check_passwd(void)
 }
 
 static char **
-build_command_info(char *command)
+build_command_info(const char *command)
 {
     static char **command_info;
     int i = 0;
@@ -306,11 +303,15 @@ find_editor(int nfiles, char * const files[], char **argv_out[])
     cp = strtok(editor, " \t");
     if (cp == NULL ||
 	(editor_path = find_in_path(editor, plugin_state.envp)) == NULL) {
+	free(editor);
 	return NULL;
     }
+    if (editor_path != editor)
+	free(editor);
     nargv = (char **) malloc((nargc + 1 + nfiles + 1) * sizeof(char *));
     if (nargv == NULL) {
 	sudo_log(SUDO_CONV_ERROR_MSG, "unable to allocate memory\n");
+	free(editor_path);
 	return NULL;
     }
     for (ac = 0; cp != NULL && ac < nargc; ac++) {
@@ -357,6 +358,7 @@ policy_check(int argc, char * const argv[],
 
     if (use_sudoedit) {
 	/* Rebuild argv using editor */
+	free(command);
 	command = find_editor(argc - 1, argv + 1, argv_out);
 	if (command == NULL) {
 	    sudo_log(SUDO_CONV_ERROR_MSG, "unable to find valid editor\n");
@@ -373,6 +375,7 @@ policy_check(int argc, char * const argv[],
 
     /* Setup command info. */
     *command_info_out = build_command_info(command);
+    free(command);
     if (*command_info_out == NULL) {
 	sudo_log(SUDO_CONV_ERROR_MSG, "out of memory\n");
 	return -1;
@@ -498,7 +501,7 @@ struct policy_plugin sample_policy = {
  * Note: This plugin does not differentiate between tty and pipe I/O.
  *       It all gets logged to the same file.
  */
-struct io_plugin sample_io = {
+__dso_public struct io_plugin sample_io = {
     SUDO_IO_PLUGIN,
     SUDO_API_VERSION,
     io_open,

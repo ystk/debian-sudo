@@ -36,6 +36,14 @@ in /etc/nsswitch.conf with a line like:
 
 	- - - - -
 
+Note that the support for the sss provider (libsss_sudo.so) that allows sudo
+to use SSSD as a cache for policies stored in LDAP is included in the sudo 
+package, not in the sudo-ldap package.  I have some hope that this turns out 
+to be a better overall solution for using sudo with LDAP, as the sudo-ldap 
+package is difficult to maintain and I'd love to be able to eliminate it!
+
+	- - - - -
+
 See the file OPTIONS in this directory for more information on the sudo
 build options used in building the Debian package.
 

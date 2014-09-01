@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008, 2010 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2008, 2010-2013 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -23,10 +23,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
-#ifdef HAVE_SETLOCALE
-# include <locale.h>
-#endif
 #ifdef HAVE_STDBOOL_H
 # include <stdbool.h>
 #else
@@ -35,23 +33,14 @@
 
 #include "missing.h"
 #include "alloc.h"
-#include "error.h"
+#include "fatal.h"
 #include "gettext.h"
 #include "sudo_conf.h"
 #include "sudo_debug.h"
 #include "sudo_exec.h"
 #include "sudo_plugin.h"
 
-sudo_conv_t sudo_conv;  /* NULL in non-plugin */
-
-/*
- * Cleanup hook for error()/errorx()
- */
-void
-cleanup(int gotsignal)
-{
-    return;
-}
+__dso_public int main(int argc, char *argv[], char *envp[]);
 
 int
 main(int argc, char *argv[], char *envp[])
@@ -60,17 +49,15 @@ main(int argc, char *argv[], char *envp[])
     int noexec = 0;
     debug_decl(main, SUDO_DEBUG_MAIN)
 
-#ifdef HAVE_SETLOCALE 
     setlocale(LC_ALL, "");
-#endif
     bindtextdomain(PACKAGE_NAME, LOCALEDIR);
     textdomain(PACKAGE_NAME);
 
     if (argc < 2)
-	errorx(EXIT_FAILURE, _("requires at least one argument"));
+	fatalx(U_("requires at least one argument"));
 
     /* Read sudo.conf. */
-    sudo_conf_read();
+    sudo_conf_read(NULL);
 
     /* If argv[0] ends in -noexec, pass the flag to sudo_execve() */
     if ((cp = strrchr(argv[0], '-')) != NULL && cp != argv[0])
@@ -88,7 +75,7 @@ main(int argc, char *argv[], char *envp[])
 	*cp = '-';
     }
     sudo_execve(cmnd, argv, envp, noexec);
-    warning(_("unable to execute %s"), argv[0]);
+    warning(U_("unable to execute %s"), argv[0]);
     sudo_debug_exit_int(__func__, __FILE__, __LINE__, sudo_debug_subsys, EXIT_FAILURE);                
     _exit(EXIT_FAILURE);
 }

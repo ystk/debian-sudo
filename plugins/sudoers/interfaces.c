@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2010-2013 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -18,7 +18,6 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/param.h>
 #include <stdio.h>
 #ifdef STDC_HEADERS
 # include <stdlib.h>
@@ -51,6 +50,8 @@
 #ifndef INADDR_NONE
 # define INADDR_NONE ((unsigned int)-1)
 #endif
+
+static struct interface_list interfaces;
 
 /*
  * Parse a space-delimited list of IP address/netmask pairs and
@@ -94,11 +95,16 @@ set_interfaces(const char *ai)
 		continue;
 	    }
 	}
-	ifp->next = interfaces;
-	interfaces = ifp;
+	SLIST_INSERT_HEAD(&interfaces, ifp, entries);
     }
     efree(addrinfo);
     debug_return;
+}
+
+struct interface_list *
+get_interfaces(void)
+{
+    return &interfaces;
 }
 
 void

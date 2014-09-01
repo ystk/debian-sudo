@@ -1,6 +1,6 @@
 %{
 /*
- * Copyright (c) 1996, 1998-2005, 2007-2012
+ * Copyright (c) 1996, 1998-2005, 2007-2013
  *	Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -25,7 +25,6 @@
 #include <config.h>
 
 #include <sys/types.h>
-#include <sys/param.h>
 #include <stdio.h>
 #ifdef STDC_HEADERS
 # include <stdlib.h>
@@ -44,6 +43,9 @@
 #ifdef HAVE_UNISTD_H
 # include <unistd.h>
 #endif /* HAVE_UNISTD_H */
+#ifdef HAVE_INTTYPES_H
+# include <inttypes.h>
+#endif
 #if defined(YYBISON) && defined(HAVE_ALLOCA_H) && !defined(__GNUC__)
 # include <alloca.h>
 #endif /* YYBISON && HAVE_ALLOCA_H && !__GNUC__ */
@@ -52,7 +54,6 @@
 #include "sudoers.h" /* XXX */
 #include "parse.h"
 #include "toke.h"
-#include "gram.h"
 
 /*
  * We must define SIZE_MAX for yacc's skeleton.c.
@@ -70,16 +71,13 @@
 /*
  * Globals
  */
-extern int sudolineno;
-extern int last_token;
-extern char *sudoers;
 bool sudoers_warnings = true;
 bool parse_error = false;
 int errorlineno = -1;
-char *errorfile = NULL;
+const char *errorfile = NULL;
 
-struct defaults_list defaults;
-struct userspec_list userspecs;
+struct defaults_list defaults = TAILQ_HEAD_INITIALIZER(defaults);
+struct userspec_list userspecs = TAILQ_HEAD_INITIALIZER(userspecs);
 
 /*
  * Local protoypes
@@ -88,30 +86,7 @@ static void  add_defaults(int, struct member *, struct defaults *);
 static void  add_userspec(struct member *, struct privilege *);
 static struct defaults *new_default(char *, char *, int);
 static struct member *new_member(char *, int);
-       void  yyerror(const char *);
-
-void
-yyerror(const char *s)
-{
-    debug_decl(yyerror, SUDO_DEBUG_PARSER)
-
-    /* If we last saw a newline the error is on the preceding line. */
-    if (last_token == COMMENT)
-	sudolineno--;
-
-    /* Save the line the first error occurred on. */
-    if (errorlineno == -1) {
-	errorlineno = sudolineno;
-	errorfile = estrdup(sudoers);
-    }
-    if (trace_print != NULL) {
-	LEXTRACE("<*> ");
-    } else if (sudoers_warnings && s != NULL) {
-	warningx(_(">>> %s: %s near line %d <<<"), sudoers, s, sudolineno);
-    }
-    parse_error = true;
-    debug_return;
-}
+static struct sudo_digest *new_digest(int, const char *);
 %}
 
 %union {
@@ -120,9 +95,11 @@ yyerror(const char *s)
     struct member *member;
     struct runascontainer *runas;
     struct privilege *privilege;
+    struct sudo_digest *digest;
     struct sudo_command command;
     struct cmndtag tag;
     struct selinux_info seinfo;
+    struct solaris_privs_info privinfo;
     char *string;
     int tok;
 }
@@ -135,6 +112,7 @@ yyerror(const char *s)
 %token <string>  NETGROUP		/* a netgroup (+NAME) */
 %token <string>  USERGROUP		/* a usergroup (%NAME) */
 %token <string>  WORD			/* a word */
+%token <string>  DIGEST			/* a SHA-2 digest */
 %token <tok>	 DEFAULTS		/* Defaults entry */
 %token <tok>	 DEFAULTS_HOST		/* Host-specific defaults entry */
 %token <tok>	 DEFAULTS_USER		/* User-specific defaults entry */
@@ -161,6 +139,13 @@ yyerror(const char *s)
 %token <tok>	 ERROR
 %token <tok>	 TYPE			/* SELinux type */
 %token <tok>	 ROLE			/* SELinux role */
+%token <tok>	 PRIVS			/* Solaris privileges */
+%token <tok>	 LIMITPRIVS		/* Solaris limit privileges */
+%token <tok>	 MYSELF			/* run as myself, not another user */
+%token <tok>	 SHA224			/* sha224 digest */
+%token <tok>	 SHA256			/* sha256 digest */
+%token <tok>	 SHA384			/* sha384 digest */
+%token <tok>	 SHA512			/* sha512 digest */
 
 %type <cmndspec>  cmndspec
 %type <cmndspec>  cmndspeclist
@@ -168,6 +153,7 @@ yyerror(const char *s)
 %type <defaults>  defaults_list
 %type <member>	  cmnd
 %type <member>	  opcmnd
+%type <member>	  digcmnd
 %type <member>	  cmndlist
 %type <member>	  host
 %type <member>	  hostlist
@@ -186,6 +172,10 @@ yyerror(const char *s)
 %type <seinfo>	  selinux
 %type <string>	  rolespec
 %type <string>	  typespec
+%type <privinfo>  solarisprivs
+%type <string>	  privsspec
+%type <string>	  limitprivsspec
+%type <digest>	  digest
 
 %%
 
@@ -237,7 +227,7 @@ entry		:	COMMENT {
 
 defaults_list	:	defaults_entry
 		|	defaults_list ',' defaults_entry {
-			    list_append($1, $3);
+			    HLTQ_CONCAT($1, $3, entries);
 			    $$ = $1;
 			}
 		;
@@ -261,17 +251,16 @@ defaults_entry	:	DEFVAR {
 
 privileges	:	privilege
 		|	privileges ':' privilege {
-			    list_append($1, $3);
+			    HLTQ_CONCAT($1, $3, entries);
 			    $$ = $1;
 			}
 		;
 
 privilege	:	hostlist '=' cmndspeclist {
 			    struct privilege *p = ecalloc(1, sizeof(*p));
-			    list2tq(&p->hostlist, $1);
-			    list2tq(&p->cmndlist, $3);
-			    p->prev = p;
-			    /* p->next = NULL; */
+			    HLTQ_TO_TAILQ(&p->hostlist, $1, entries);
+			    HLTQ_TO_TAILQ(&p->cmndlist, $3, entries);
+			    HLTQ_INIT(p, entries);
 			    $$ = p;
 			}
 		;
@@ -305,60 +294,104 @@ host		:	ALIAS {
 
 cmndspeclist	:	cmndspec
 		|	cmndspeclist ',' cmndspec {
-			    list_append($1, $3);
+			    struct cmndspec *prev;
+			    prev = HLTQ_LAST($1, cmndspec, entries);
+			    HLTQ_CONCAT($1, $3, entries);
 #ifdef HAVE_SELINUX
 			    /* propagate role and type */
 			    if ($3->role == NULL)
-				$3->role = $3->prev->role;
+				$3->role = prev->role;
 			    if ($3->type == NULL)
-				$3->type = $3->prev->type;
+				$3->type = prev->type;
 #endif /* HAVE_SELINUX */
+#ifdef HAVE_PRIV_SET
+			    /* propagate privs & limitprivs */
+			    if ($3->privs == NULL)
+			        $3->privs = prev->privs;
+			    if ($3->limitprivs == NULL)
+			        $3->limitprivs = prev->limitprivs;
+#endif /* HAVE_PRIV_SET */
 			    /* propagate tags and runas list */
 			    if ($3->tags.nopasswd == UNSPEC)
-				$3->tags.nopasswd = $3->prev->tags.nopasswd;
+				$3->tags.nopasswd = prev->tags.nopasswd;
 			    if ($3->tags.noexec == UNSPEC)
-				$3->tags.noexec = $3->prev->tags.noexec;
+				$3->tags.noexec = prev->tags.noexec;
 			    if ($3->tags.setenv == UNSPEC &&
-				$3->prev->tags.setenv != IMPLIED)
-				$3->tags.setenv = $3->prev->tags.setenv;
+				prev->tags.setenv != IMPLIED)
+				$3->tags.setenv = prev->tags.setenv;
 			    if ($3->tags.log_input == UNSPEC)
-				$3->tags.log_input = $3->prev->tags.log_input;
+				$3->tags.log_input = prev->tags.log_input;
 			    if ($3->tags.log_output == UNSPEC)
-				$3->tags.log_output = $3->prev->tags.log_output;
-			    if ((tq_empty(&$3->runasuserlist) &&
-				 tq_empty(&$3->runasgrouplist)) &&
-				(!tq_empty(&$3->prev->runasuserlist) ||
-				 !tq_empty(&$3->prev->runasgrouplist))) {
-				$3->runasuserlist = $3->prev->runasuserlist;
-				$3->runasgrouplist = $3->prev->runasgrouplist;
+				$3->tags.log_output = prev->tags.log_output;
+			    if (($3->runasuserlist == NULL &&
+				 $3->runasgrouplist == NULL) &&
+				(prev->runasuserlist != NULL ||
+				 prev->runasgrouplist != NULL)) {
+				$3->runasuserlist = prev->runasuserlist;
+				$3->runasgrouplist = prev->runasgrouplist;
 			    }
 			    $$ = $1;
 			}
 		;
 
-cmndspec	:	runasspec selinux cmndtag opcmnd {
+cmndspec	:	runasspec selinux solarisprivs cmndtag digcmnd {
 			    struct cmndspec *cs = ecalloc(1, sizeof(*cs));
 			    if ($1 != NULL) {
-				list2tq(&cs->runasuserlist, $1->runasusers);
-				list2tq(&cs->runasgrouplist, $1->runasgroups);
+				if ($1->runasusers != NULL) {
+				    cs->runasuserlist =
+					emalloc(sizeof(*cs->runasuserlist));
+				    HLTQ_TO_TAILQ(cs->runasuserlist,
+					$1->runasusers, entries);
+				}
+				if ($1->runasgroups != NULL) {
+				    cs->runasgrouplist =
+					emalloc(sizeof(*cs->runasgrouplist));
+				    HLTQ_TO_TAILQ(cs->runasgrouplist,
+					$1->runasgroups, entries);
+				}
 				efree($1);
-			    } else {
-				tq_init(&cs->runasuserlist);
-				tq_init(&cs->runasgrouplist);
 			    }
 #ifdef HAVE_SELINUX
 			    cs->role = $2.role;
 			    cs->type = $2.type;
 #endif
-			    cs->tags = $3;
-			    cs->cmnd = $4;
-			    cs->prev = cs;
-			    cs->next = NULL;
+#ifdef HAVE_PRIV_SET
+			    cs->privs = $3.privs;
+			    cs->limitprivs = $3.limitprivs;
+#endif
+			    cs->tags = $4;
+			    cs->cmnd = $5;
+			    HLTQ_INIT(cs, entries);
 			    /* sudo "ALL" implies the SETENV tag */
 			    if (cs->cmnd->type == ALL && !cs->cmnd->negated &&
 				cs->tags.setenv == UNSPEC)
 				cs->tags.setenv = IMPLIED;
 			    $$ = cs;
+			}
+		;
+
+digest		:	SHA224 ':' DIGEST {
+			    $$ = new_digest(SUDO_DIGEST_SHA224, $3);
+			}
+		|	SHA256 ':' DIGEST {
+			    $$ = new_digest(SUDO_DIGEST_SHA256, $3);
+			}
+		|	SHA384 ':' DIGEST {
+			    $$ = new_digest(SUDO_DIGEST_SHA384, $3);
+			}
+		|	SHA512 ':' DIGEST {
+			    $$ = new_digest(SUDO_DIGEST_SHA512, $3);
+			}
+		;
+
+digcmnd		:	opcmnd {
+			    $$ = $1;
+			}
+		|	digest opcmnd {
+			    /* XXX - yuck */
+			    struct sudo_command *c = (struct sudo_command *)($2->name);
+			    c->digest = $1;
+			    $$ = $2;
 			}
 		;
 
@@ -404,6 +437,37 @@ selinux		:	/* empty */ {
 			}
 		;
 
+privsspec	:	PRIVS '=' WORD {
+			    $$ = $3;
+			}
+		;
+limitprivsspec	:	LIMITPRIVS '=' WORD {
+			    $$ = $3;
+			}
+		;
+
+solarisprivs	:	/* empty */ {
+			    $$.privs = NULL;
+			    $$.limitprivs = NULL;
+			}
+		|	privsspec {
+			    $$.privs = $1;
+			    $$.limitprivs = NULL;
+			}
+		|	limitprivsspec {
+			    $$.privs = NULL;
+			    $$.limitprivs = $1;
+			}
+		|	privsspec limitprivsspec {
+			    $$.privs = $1;
+			    $$.limitprivs = $2;
+			}
+		|	limitprivsspec privsspec {
+			    $$.limitprivs = $1;
+			    $$.privs = $2;
+			}
+		;
+
 runasspec	:	/* empty */ {
 			    $$ = NULL;
 			}
@@ -412,7 +476,12 @@ runasspec	:	/* empty */ {
 			}
 		;
 
-runaslist	:	userlist {
+runaslist	:	/* empty */ {
+			    $$ = ecalloc(1, sizeof(struct runascontainer));
+			    $$->runasusers = new_member(NULL, MYSELF);
+			    /* $$->runasgroups = NULL; */
+			}
+		|	userlist {
 			    $$ = ecalloc(1, sizeof(struct runascontainer));
 			    $$->runasusers = $1;
 			    /* $$->runasgroups = NULL; */
@@ -426,6 +495,11 @@ runaslist	:	userlist {
 			    $$ = ecalloc(1, sizeof(struct runascontainer));
 			    /* $$->runasusers = NULL; */
 			    $$->runasgroups = $2;
+			}
+		|	':' {
+			    $$ = ecalloc(1, sizeof(struct runascontainer));
+			    $$->runasusers = new_member(NULL, MYSELF);
+			    /* $$->runasgroups = NULL; */
 			}
 		;
 
@@ -486,7 +560,7 @@ hostaliases	:	hostalias
 hostalias	:	ALIAS '=' hostlist {
 			    char *s;
 			    if ((s = alias_add($1, HOSTALIAS, $3)) != NULL) {
-				yyerror(s);
+				sudoerserror(s);
 				YYERROR;
 			    }
 			}
@@ -494,7 +568,7 @@ hostalias	:	ALIAS '=' hostlist {
 
 hostlist	:	ophost
 		|	hostlist ',' ophost {
-			    list_append($1, $3);
+			    HLTQ_CONCAT($1, $3, entries);
 			    $$ = $1;
 			}
 		;
@@ -506,15 +580,15 @@ cmndaliases	:	cmndalias
 cmndalias	:	ALIAS '=' cmndlist {
 			    char *s;
 			    if ((s = alias_add($1, CMNDALIAS, $3)) != NULL) {
-				yyerror(s);
+				sudoerserror(s);
 				YYERROR;
 			    }
 			}
 		;
 
-cmndlist	:	opcmnd
-		|	cmndlist ',' opcmnd {
-			    list_append($1, $3);
+cmndlist	:	digcmnd
+		|	cmndlist ',' digcmnd {
+			    HLTQ_CONCAT($1, $3, entries);
 			    $$ = $1;
 			}
 		;
@@ -526,7 +600,7 @@ runasaliases	:	runasalias
 runasalias	:	ALIAS '=' userlist {
 			    char *s;
 			    if ((s = alias_add($1, RUNASALIAS, $3)) != NULL) {
-				yyerror(s);
+				sudoerserror(s);
 				YYERROR;
 			    }
 			}
@@ -539,7 +613,7 @@ useraliases	:	useralias
 useralias	:	ALIAS '=' userlist {
 			    char *s;
 			    if ((s = alias_add($1, USERALIAS, $3)) != NULL) {
-				yyerror(s);
+				sudoerserror(s);
 				YYERROR;
 			    }
 			}
@@ -547,7 +621,7 @@ useralias	:	ALIAS '=' userlist {
 
 userlist	:	opuser
 		|	userlist ',' opuser {
-			    list_append($1, $3);
+			    HLTQ_CONCAT($1, $3, entries);
 			    $$ = $1;
 			}
 		;
@@ -581,7 +655,7 @@ user		:	ALIAS {
 
 grouplist	:	opgroup
 		|	grouplist ',' opgroup {
-			    list_append($1, $3);
+			    HLTQ_CONCAT($1, $3, entries);
 			    $$ = $1;
 			}
 		;
@@ -608,6 +682,38 @@ group		:	ALIAS {
 		;
 
 %%
+void
+sudoerserror(const char *s)
+{
+    debug_decl(sudoerserror, SUDO_DEBUG_PARSER)
+
+    /* If we last saw a newline the error is on the preceding line. */
+    if (last_token == COMMENT)
+	sudolineno--;
+
+    /* Save the line the first error occurred on. */
+    if (errorlineno == -1) {
+	errorlineno = sudolineno;
+	errorfile = estrdup(sudoers);
+    }
+    if (sudoers_warnings && s != NULL) {
+	LEXTRACE("<*> ");
+#ifndef TRACELEXER
+	if (trace_print == NULL || trace_print == sudoers_trace_print) {
+	    const char fmt[] = ">>> %s: %s near line %d <<<\n";
+	    int oldlocale;
+
+	    /* Warnings are displayed in the user's locale. */
+	    sudoers_setlocale(SUDOERS_LOCALE_USER, &oldlocale);
+	    sudo_printf(SUDO_CONV_ERROR_MSG, _(fmt), sudoers, _(s), sudolineno);
+	    sudoers_setlocale(oldlocale, NULL);
+	}
+#endif
+    }
+    parse_error = true;
+    debug_return;
+}
+
 static struct defaults *
 new_default(char *var, char *val, int op)
 {
@@ -617,11 +723,10 @@ new_default(char *var, char *val, int op)
     d = ecalloc(1, sizeof(struct defaults));
     d->var = var;
     d->val = val;
-    tq_init(&d->binding);
     /* d->type = 0; */
     d->op = op;
-    d->prev = d;
-    /* d->next = NULL; */
+    /* d->binding = NULL */
+    HLTQ_INIT(d, entries);
 
     debug_return_ptr(d);
 }
@@ -635,10 +740,22 @@ new_member(char *name, int type)
     m = ecalloc(1, sizeof(struct member));
     m->name = name;
     m->type = type;
-    m->prev = m;
-    /* m->next = NULL; */
+    HLTQ_INIT(m, entries);
 
     debug_return_ptr(m);
+}
+
+struct sudo_digest *
+new_digest(int digest_type, const char *digest_str)
+{
+    struct sudo_digest *dig;
+    debug_decl(new_digest, SUDO_DEBUG_PARSER)
+
+    dig = emalloc(sizeof(*dig));
+    dig->digest_type = digest_type;
+    dig->digest_str = estrdup(digest_str);
+
+    debug_return_ptr(dig);
 }
 
 /*
@@ -650,30 +767,36 @@ static void
 add_defaults(int type, struct member *bmem, struct defaults *defs)
 {
     struct defaults *d;
-    struct member_list binding;
+    struct member_list *binding;
     debug_decl(add_defaults, SUDO_DEBUG_PARSER)
 
-    /*
-     * We can only call list2tq once on bmem as it will zero
-     * out the prev pointer when it consumes bmem.
-     */
-    list2tq(&binding, bmem);
+    if (defs != NULL) {
+	/*
+	 * We use a single binding for each entry in defs.
+	 */
+	binding = emalloc(sizeof(*binding));
+	if (bmem != NULL)
+	    HLTQ_TO_TAILQ(binding, bmem, entries);
+	else
+	    TAILQ_INIT(binding);
 
-    /*
-     * Set type and binding (who it applies to) for new entries.
-     */
-    for (d = defs; d != NULL; d = d->next) {
-	d->type = type;
-	d->binding = binding;
+	/*
+	 * Set type and binding (who it applies to) for new entries.
+	 * Then add to the global defaults list.
+	 */
+	HLTQ_FOREACH(d, defs, entries) {
+	    d->type = type;
+	    d->binding = binding;
+	}
+	TAILQ_CONCAT_HLTQ(&defaults, defs, entries);
     }
-    tq_append(&defaults, defs);
 
     debug_return;
 }
 
 /*
  * Allocate a new struct userspec, populate it, and insert it at the
- * and of the userspecs list.
+ * end of the userspecs list.
  */
 static void
 add_userspec(struct member *members, struct privilege *privs)
@@ -682,11 +805,9 @@ add_userspec(struct member *members, struct privilege *privs)
     debug_decl(add_userspec, SUDO_DEBUG_PARSER)
 
     u = ecalloc(1, sizeof(*u));
-    list2tq(&u->users, members);
-    list2tq(&u->privileges, privs);
-    u->prev = u;
-    /* u->next = NULL; */
-    tq_append(&userspecs, u);
+    HLTQ_TO_TAILQ(&u->users, members, entries);
+    HLTQ_TO_TAILQ(&u->privileges, privs, entries);
+    TAILQ_INSERT_TAIL(&userspecs, u, entries);
 
     debug_return;
 }
@@ -696,32 +817,36 @@ add_userspec(struct member *members, struct privilege *privs)
  * the current sudoers file to path.
  */
 void
-init_parser(const char *path, int quiet)
+init_parser(const char *path, bool quiet)
 {
-    struct defaults *d;
-    struct member *m, *binding;
-    struct userspec *us;
-    struct privilege *priv;
-    struct cmndspec *cs;
-    struct sudo_command *c;
+    struct member_list *binding;
+    struct defaults *d, *d_next;
+    struct userspec *us, *us_next;
     debug_decl(init_parser, SUDO_DEBUG_PARSER)
 
-    while ((us = tq_pop(&userspecs)) != NULL) {
-	while ((m = tq_pop(&us->users)) != NULL) {
+    TAILQ_FOREACH_SAFE(us, &userspecs, entries, us_next) {
+	struct member *m, *m_next;
+	struct privilege *priv, *priv_next;
+
+	TAILQ_FOREACH_SAFE(m, &us->users, entries, m_next) {
 	    efree(m->name);
 	    efree(m);
 	}
-	while ((priv = tq_pop(&us->privileges)) != NULL) {
-	    struct member *runasuser = NULL, *runasgroup = NULL;
+	TAILQ_FOREACH_SAFE(priv, &us->privileges, entries, priv_next) {
+	    struct member_list *runasuserlist = NULL, *runasgrouplist = NULL;
+	    struct cmndspec *cs, *cs_next;
 #ifdef HAVE_SELINUX
 	    char *role = NULL, *type = NULL;
 #endif /* HAVE_SELINUX */
+#ifdef HAVE_PRIV_SET
+	    char *privs = NULL, *limitprivs = NULL;
+#endif /* HAVE_PRIV_SET */
 
-	    while ((m = tq_pop(&priv->hostlist)) != NULL) {
+	    TAILQ_FOREACH_SAFE(m, &priv->hostlist, entries, m_next) {
 		efree(m->name);
 		efree(m);
 	    }
-	    while ((cs = tq_pop(&priv->cmndlist)) != NULL) {
+	    TAILQ_FOREACH_SAFE(cs, &priv->cmndlist, entries, cs_next) {
 #ifdef HAVE_SELINUX
 		/* Only free the first instance of a role/type. */
 		if (cs->role != role) {
@@ -733,22 +858,37 @@ init_parser(const char *path, int quiet)
 		    efree(cs->type);
 		}
 #endif /* HAVE_SELINUX */
-		if (tq_last(&cs->runasuserlist) != runasuser) {
-		    runasuser = tq_last(&cs->runasuserlist);
-		    while ((m = tq_pop(&cs->runasuserlist)) != NULL) {
-			efree(m->name);
-			efree(m);
-		    }
+#ifdef HAVE_PRIV_SET
+		/* Only free the first instance of privs/limitprivs. */
+		if (cs->privs != privs) {
+		    privs = cs->privs;
+		    efree(cs->privs);
 		}
-		if (tq_last(&cs->runasgrouplist) != runasgroup) {
-		    runasgroup = tq_last(&cs->runasgrouplist);
-		    while ((m = tq_pop(&cs->runasgrouplist)) != NULL) {
+		if (cs->limitprivs != limitprivs) {
+		    limitprivs = cs->limitprivs;
+		    efree(cs->limitprivs);
+		}
+#endif /* HAVE_PRIV_SET */
+		/* Only free the first instance of runas user/group lists. */
+		if (cs->runasuserlist && cs->runasuserlist != runasuserlist) {
+		    runasuserlist = cs->runasuserlist;
+		    TAILQ_FOREACH_SAFE(m, runasuserlist, entries, m_next) {
 			efree(m->name);
 			efree(m);
 		    }
+		    efree(runasuserlist);
+		}
+		if (cs->runasgrouplist && cs->runasgrouplist != runasgrouplist) {
+		    runasgrouplist = cs->runasgrouplist;
+		    TAILQ_FOREACH_SAFE(m, runasgrouplist, entries, m_next) {
+			efree(m->name);
+			efree(m);
+		    }
+		    efree(runasgrouplist);
 		}
 		if (cs->cmnd->type == COMMAND) {
-			c = (struct sudo_command *) cs->cmnd->name;
+			struct sudo_command *c =
+			    (struct sudo_command *) cs->cmnd->name;
 			efree(c->cmnd);
 			efree(c->args);
 		}
@@ -760,27 +900,31 @@ init_parser(const char *path, int quiet)
 	}
 	efree(us);
     }
-    tq_init(&userspecs);
+    TAILQ_INIT(&userspecs);
 
     binding = NULL;
-    while ((d = tq_pop(&defaults)) != NULL) {
-	if (tq_last(&d->binding) != binding) {
-	    binding = tq_last(&d->binding);
-	    while ((m = tq_pop(&d->binding)) != NULL) {
+    TAILQ_FOREACH_SAFE(d, &defaults, entries, d_next) {
+	if (d->binding != binding) {
+	    struct member *m, *m_next;
+
+	    binding = d->binding;
+	    TAILQ_FOREACH_SAFE(m, d->binding, entries, m_next) {
 		if (m->type == COMMAND) {
-			c = (struct sudo_command *) m->name;
+			struct sudo_command *c =
+			    (struct sudo_command *) m->name;
 			efree(c->cmnd);
 			efree(c->args);
 		}
 		efree(m->name);
 		efree(m);
 	    }
+	    efree(d->binding);
 	}
 	efree(d->var);
 	efree(d->val);
 	efree(d);
     }
-    tq_init(&defaults);
+    TAILQ_INIT(&defaults);
 
     init_aliases();
 

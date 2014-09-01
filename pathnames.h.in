@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1996, 1998, 1999, 2001, 2004, 2005, 2007-2010
+ * Copyright (c) 1996, 1998, 1999, 2001, 2004, 2005, 2007-2012
  *	Todd C. Miller <Todd.Miller@courtesan.com>.
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -156,6 +156,10 @@
 #ifndef _PATH_LDAP_SECRET
 #undef	_PATH_LDAP_SECRET
 #endif /* _PATH_LDAP_SECRET */
+
+#ifndef _PATH_SSSD_LIB
+#undef  _PATH_SSSD_LIB
+#endif /* _PATH_SSSD_LIB */
 
 #ifndef _PATH_NSSWITCH_CONF
 #undef	_PATH_NSSWITCH_CONF

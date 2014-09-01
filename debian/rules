@@ -7,6 +7,7 @@ CFLAGS += -Wall -Wno-comment
 LDFLAGS = `dpkg-buildflags --get LDFLAGS`
 CPPFLAGS = `dpkg-buildflags --get CPPFLAGS`
 
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 DEB_HOST_ARCH_OS ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 ifeq ($(DEB_HOST_ARCH_OS),linux)
   configure_args += --with-selinux
@@ -44,6 +45,7 @@ configure-stamp: reconf-stamp
 		--with-timedir=/var/lib/sudo \
 		--mandir=/usr/share/man \
 		--libexecdir=/usr/lib/sudo \
+		--with-sssd --with-sssd-lib=/usr/lib/$(DEB_HOST_MULTIARCH) \
 		$(configure_args)
 
 	# LDAP version
@@ -153,7 +155,8 @@ binary-arch: build install
 	dh_testdir
 	dh_testroot
 	dh_installdocs -A
-	dh_installinit -psudo -psudo-ldap --name=sudo
+	dh_installinit -psudo --name=sudo
+	dh_installinit -psudo-ldap --name=sudo-ldap
 	dh_installman -A
 	dh_installinfo -A
 	dh_installchangelogs ChangeLog 

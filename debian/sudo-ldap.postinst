@@ -31,10 +31,6 @@ fi
 chown root:root /etc/sudoers
 chmod 440 /etc/sudoers
 
-update-rc.d -f sudo remove >/dev/null 2>&1
-
-update-rc.d sudo start 75 2 3 4 5 . >/dev/null
-
 # create symlink to ease transition to new path for ldap config
 # if old config file exists and new one doesn't
 if [ -e /etc/ldap/ldap.conf -a ! -e /etc/sudo-ldap.conf ];then
