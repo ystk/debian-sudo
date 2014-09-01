@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2011 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2009-2013 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -16,7 +16,6 @@
 
 #include <config.h>
 
-#include <sys/param.h>
 #include <sys/types.h>
 #include <sys/time.h>
 
@@ -39,7 +38,7 @@
 # include <strings.h>
 #endif /* HAVE_STRINGS_H */
 #include <limits.h>
-#if TIME_WITH_SYS_TIME
+#ifdef TIME_WITH_SYS_TIME
 # include <time.h>
 #endif
 #ifndef __linux__
@@ -64,7 +63,7 @@
 int
 get_boottime(struct timeval *tv)
 {
-    char *line = NULL;
+    char *ep, *line = NULL;
     size_t linesize = 0;
     ssize_t len;
     FILE * fp;
@@ -75,9 +74,12 @@ get_boottime(struct timeval *tv)
     if (fp != NULL) {
 	while ((len = getline(&line, &linesize, fp)) != -1) {
 	    if (strncmp(line, "btime ", 6) == 0) {
-		tv->tv_sec = atoi(line + 6);
-		tv->tv_usec = 0;
-		debug_return_bool(1);
+		long long llval = strtonum(line + 6, 1, LLONG_MAX, NULL);
+		if (llval > 0) {
+		    tv->tv_sec = (time_t)llval;
+		    tv->tv_usec = 0;
+		    debug_return_bool(1);
+		}
 	    }
 	}
 	fclose(fp);

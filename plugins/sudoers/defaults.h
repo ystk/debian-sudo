@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1999-2005, 2008-2010
+ * Copyright (c) 1999-2005, 2008-2013
  *	Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
@@ -19,25 +19,28 @@
  * Materiel Command, USAF, under agreement number F39502-99-1-0512.
  */
 
-#ifndef _SUDO_DEFAULTS_H
-#define _SUDO_DEFAULTS_H
+#ifndef _SUDOERS_DEFAULTS_H
+#define _SUDOERS_DEFAULTS_H
 
 #include <def_data.h>
 
 struct list_member {
+    SLIST_ENTRY(list_member) entries;
     char *value;
-    struct list_member *next;
 };
 
-struct def_values {
-    char *sval;		/* string value */
-    int ival;		/* actually an enum */
-};
+SLIST_HEAD(list_members, list_member);
 
 enum list_ops {
     add,
     delete,
     freeall
+};
+
+/* Mapping of tuple string value to enum def_tuple. */
+struct def_values {
+    char *sval;		/* string value */
+    enum def_tuple nval;/* numeric value */
 };
 
 /*
@@ -52,11 +55,12 @@ struct sudo_defs_types {
     union {
 	int flag;
 	int ival;
+	unsigned int uival;
 	double fval;
 	enum def_tuple tuple;
 	char *str;
 	mode_t mode;
-	struct list_member *list;
+	struct list_members list;
     } sd_un;
 };
 
@@ -93,7 +97,7 @@ struct sudo_defs_types {
 #define T_PATH		0x200
 
 /*
- * Argument to update_defaults()
+ * Argument to update_defaults() and check_defaults()
  */
 #define SETDEF_GENERIC	0x01
 #define	SETDEF_HOST	0x02
@@ -107,9 +111,10 @@ struct sudo_defs_types {
  */
 void dump_default(void);
 void init_defaults(void);
-bool set_default(char *, char *, int);
-int  update_defaults(int);
+bool set_default(char *var, char *val, int op);
+bool update_defaults(int what);
+bool check_defaults(int what, bool quiet);
 
 extern struct sudo_defs_types sudo_defs_table[];
 
-#endif /* _SUDO_DEFAULTS_H */
+#endif /* _SUDOERS_DEFAULTS_H */

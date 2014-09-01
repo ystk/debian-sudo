@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2012 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2009-2013 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,17 +17,11 @@
 #include <config.h>
 
 #include <sys/types.h>
-#include <sys/param.h>
-#ifdef HAVE_SYS_SYSMACROS_H
-# include <sys/sysmacros.h>
-#endif
+#include <sys/uio.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
-#ifdef HAVE_SYS_SELECT_H
-#include <sys/select.h>
-#endif /* HAVE_SYS_SELECT_H */
 #include <stdio.h>
 #ifdef STDC_HEADERS
 # include <stdlib.h>
@@ -49,7 +43,7 @@
 #ifdef HAVE_UNISTD_H
 # include <unistd.h>
 #endif /* HAVE_UNISTD_H */
-#if TIME_WITH_SYS_TIME
+#ifdef TIME_WITH_SYS_TIME
 # include <time.h>
 #endif
 #ifndef HAVE_STRUCT_TIMESPEC
@@ -81,54 +75,36 @@
 #ifdef HAVE_ZLIB_H
 # include <zlib.h>
 #endif
-#ifdef HAVE_SETLOCALE
-# include <locale.h>
-#endif
 #include <signal.h>
 #ifdef HAVE_STDBOOL_H
 # include <stdbool.h>
 #else
 # include "compat/stdbool.h"
 #endif /* HAVE_STDBOOL_H */
+#ifdef HAVE_GETOPT_LONG
+# include <getopt.h>
+# else
+# include "compat/getopt.h"
+#endif /* HAVE_GETOPT_LONG */
 
 #include <pathnames.h>
 
 #include "missing.h"
 #include "alloc.h"
-#include "error.h"
+#include "fatal.h"
 #include "gettext.h"
+#include "logging.h"
+#include "iolog.h"
+#include "queue.h"
 #include "sudo_plugin.h"
 #include "sudo_conf.h"
 #include "sudo_debug.h"
+#include "sudo_event.h"
+#include "sudo_util.h"
 
 #ifndef LINE_MAX
 # define LINE_MAX 2048
 #endif
-
-/* Must match the defines in iolog.c */
-#define IOFD_STDIN      0
-#define IOFD_STDOUT     1
-#define IOFD_STDERR     2
-#define IOFD_TTYIN      3
-#define IOFD_TTYOUT     4
-#define IOFD_TIMING     5
-#define IOFD_MAX        6
-
-/* Bitmap of iofds to be replayed */
-unsigned int replay_filter = (1 << IOFD_STDOUT) | (1 << IOFD_STDERR) |
-			     (1 << IOFD_TTYOUT);
-
-/* For getopt(3) */
-extern char *optarg;
-extern int optind;
-
-union io_fd {
-    FILE *f;
-#ifdef HAVE_ZLIB_H
-    gzFile g;
-#endif
-    void *v;
-};
 
 /*
  * Info present in the I/O log file
@@ -145,12 +121,21 @@ struct log_info {
     int cols;
 };
 
+/* Closure for write_output */
+struct write_closure {
+    struct sudo_event *wevent;
+    struct iovec *iov;
+    unsigned int iovcnt;
+    size_t nbytes;
+};
+
 /*
  * Handle expressions like:
  * ( user millert or user root ) and tty console and command /bin/sh
  */
+STAILQ_HEAD(search_node_list, search_node);
 struct search_node {
-    struct search_node *next;
+    STAILQ_ENTRY(search_node) entries;
 #define ST_EXPR		1
 #define ST_TTY		2
 #define ST_USER		3
@@ -161,9 +146,8 @@ struct search_node {
 #define ST_TODATE	8
 #define ST_CWD		9
     char type;
-    char negated;
-    char or;
-    char pad;
+    bool negated;
+    bool or;
     union {
 #ifdef HAVE_REGCOMP
 	regex_t cmdre;
@@ -175,46 +159,47 @@ struct search_node {
 	char *pattern;
 	char *runas_group;
 	char *runas_user;
-	struct search_node *expr;
+	struct search_node_list expr;
 	void *ptr;
     } u;
-} *search_expr;
+};
 
-sudo_conv_t sudo_conv;	/* NULL in non-plugin */
+static struct search_node_list search_expr = STAILQ_HEAD_INITIALIZER(search_expr);
 
-#define STACK_NODE_SIZE	32
-static struct search_node *node_stack[32];
-static int stack_top;
+static int timing_idx_adj;
+
+static double speed_factor = 1.0;
 
 static const char *session_dir = _PATH_SUDO_IO_LOGDIR;
 
-static union io_fd io_fds[IOFD_MAX];
-static const char *io_fnames[IOFD_MAX] = {
-    "/stdin",
-    "/stdout",
-    "/stderr",
-    "/ttyin",
-    "/ttyout",
-    "/timing"
+static const char short_opts[] =  "d:f:hlm:s:V";
+static struct option long_opts[] = {
+    { "directory",	required_argument,	NULL,	'd' },
+    { "filter",		required_argument,	NULL,	'f' },
+    { "help",		no_argument,		NULL,	'h' },
+    { "list",		no_argument,		NULL,	'l' },
+    { "max-wait",	required_argument,	NULL,	'm' },
+    { "speed",		required_argument,	NULL,	's' },
+    { "version",	no_argument,		NULL,	'V' },
+    { NULL,		no_argument,		NULL,	'\0' },
 };
 
-extern time_t get_date(char *);
 extern char *get_timestr(time_t, int);
-extern int term_raw(int, int);
-extern int term_restore(int, int);
-extern void get_ttysize(int *rowp, int *colp);
-void cleanup(int);
+extern time_t get_date(char *);
 
 static int list_sessions(int, char **, const char *, const char *, const char *);
-static int parse_expr(struct search_node **, char **);
-static void check_input(int, double *);
-static void delay(double);
-static void help(void) __attribute__((__noreturn__));
-static void usage(int);
-static int open_io_fd(char *pathbuf, int len, const char *suffix, union io_fd *fdp);
+static int open_io_fd(char *path, int len, struct io_log_file *iol);
+static int parse_expr(struct search_node_list *, char **, bool);
 static int parse_timing(const char *buf, const char *decimal, int *idx, double *seconds, size_t *nbytes);
 static struct log_info *parse_logfile(char *logfile);
+static void check_input(int fd, int what, void *v);
 static void free_log_info(struct log_info *li);
+static void help(void) __attribute__((__noreturn__));
+static void replay_session(const double max_wait, const char *decimal);
+static void sudoreplay_cleanup(void);
+static void sudoreplay_handler(int);
+static void usage(int);
+static void write_output(int fd, int what, void *v);
 
 #ifdef HAVE_REGCOMP
 # define REGEX_T	regex_t
@@ -236,19 +221,17 @@ static void free_log_info(struct log_info *li);
     (s)[8] == '/' && (s)[9] == 'l' && (s)[10] == 'o' && (s)[11] == 'g' && \
     (s)[12] == '\0')
 
+__dso_public int main(int argc, char *argv[]);
+
 int
 main(int argc, char *argv[])
 {
-    int ch, idx, plen, nready, exitcode = 0, rows = 0, cols = 0;
-    bool interactive = false, listonly = false;
-    const char *id, *user = NULL, *pattern = NULL, *tty = NULL, *decimal = ".";
-    char path[PATH_MAX], buf[LINE_MAX], *cp, *ep;
-    double seconds, to_wait, speed = 1.0, max_wait = 0;
-    fd_set *fdsw;
-    sigaction_t sa;
-    size_t len, nbytes, nread, off;
-    ssize_t nwritten;
+    int ch, idx, plen, exitcode = 0, rows = 0, cols = 0;
+    bool def_filter = true, listonly = false;
+    const char *decimal, *id, *user = NULL, *pattern = NULL, *tty = NULL;
+    char *cp, *ep, path[PATH_MAX];
     struct log_info *li;
+    double max_wait = 0;
     debug_decl(main, SUDO_DEBUG_MAIN)
 
 #if defined(SUDO_DEVEL) && defined(__OpenBSD__)
@@ -258,37 +241,35 @@ main(int argc, char *argv[])
     }  
 #endif
 
-#if !defined(HAVE_GETPROGNAME) && !defined(HAVE___PROGNAME)
-    setprogname(argc > 0 ? argv[0] : "sudoreplay");
-#endif
-
-#ifdef HAVE_SETLOCALE
+    initprogname(argc > 0 ? argv[0] : "sudoreplay");
     setlocale(LC_ALL, "");
     decimal = localeconv()->decimal_point;
-#endif
     bindtextdomain("sudoers", LOCALEDIR); /* XXX - should have sudoreplay domain */
     textdomain("sudoers");
 
-    /* Read sudo.conf. */
-    sudo_conf_read();
+    /* Register fatal/fatalx callback. */
+    fatal_callback_register(sudoreplay_cleanup);
 
-    while ((ch = getopt(argc, argv, "d:f:hlm:s:V")) != -1) {
-	switch(ch) {
+    /* Read sudo.conf. */
+    sudo_conf_read(NULL);
+
+    while ((ch = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
+	switch (ch) {
 	case 'd':
 	    session_dir = optarg;
 	    break;
 	case 'f':
 	    /* Set the replay filter. */
-	    replay_filter = 0;
+	    def_filter = false;
 	    for (cp = strtok(optarg, ","); cp; cp = strtok(NULL, ",")) {
 		if (strcmp(cp, "stdout") == 0)
-		    SET(replay_filter, 1 << IOFD_STDOUT);
+		    io_log_files[IOFD_STDOUT].enabled = true;
 		else if (strcmp(cp, "stderr") == 0)
-		    SET(replay_filter, 1 << IOFD_STDERR);
+		    io_log_files[IOFD_STDERR].enabled = true;
 		else if (strcmp(cp, "ttyout") == 0)
-		    SET(replay_filter, 1 << IOFD_TTYOUT);
+		    io_log_files[IOFD_TTYOUT].enabled = true;
 		else
-		    errorx(1, _("invalid filter option: %s"), optarg);
+		    fatalx(U_("invalid filter option: %s"), optarg);
 	    }
 	    break;
 	case 'h':
@@ -301,13 +282,13 @@ main(int argc, char *argv[])
 	    errno = 0;
 	    max_wait = strtod(optarg, &ep);
 	    if (*ep != '\0' || errno != 0)
-		errorx(1, _("invalid max wait: %s"), optarg);
+		fatalx(U_("invalid max wait: %s"), optarg);
 	    break;
 	case 's':
 	    errno = 0;
-	    speed = strtod(optarg, &ep);
+	    speed_factor = strtod(optarg, &ep);
 	    if (*ep != '\0' || errno != 0)
-		errorx(1, _("invalid speed factor: %s"), optarg);
+		fatalx(U_("invalid speed factor: %s"), optarg);
 	    break;
 	case 'V':
 	    (void) printf(_("%s version %s\n"), getprogname(), PACKAGE_VERSION);
@@ -329,29 +310,34 @@ main(int argc, char *argv[])
     if (argc != 1)
 	usage(1);
 
+    /* By default we replay stdout, stderr and ttyout. */
+    if (def_filter) {
+	io_log_files[IOFD_STDOUT].enabled = true;
+	io_log_files[IOFD_STDERR].enabled = true;
+	io_log_files[IOFD_TTYOUT].enabled = true;
+    }
+
     /* 6 digit ID in base 36, e.g. 01G712AB or free-form name */
     id = argv[0];
     if (VALID_ID(id)) {
 	plen = snprintf(path, sizeof(path), "%s/%.2s/%.2s/%.2s/timing",
 	    session_dir, id, &id[2], &id[4]);
-	if (plen <= 0 || plen >= sizeof(path))
-	    errorx(1, _("%s/%.2s/%.2s/%.2s/timing: %s"), session_dir,
+	if (plen <= 0 || (size_t)plen >= sizeof(path))
+	    fatalx(U_("%s/%.2s/%.2s/%.2s/timing: %s"), session_dir,
 		id, &id[2], &id[4], strerror(ENAMETOOLONG));
     } else {
 	plen = snprintf(path, sizeof(path), "%s/%s/timing",
 	    session_dir, id);
-	if (plen <= 0 || plen >= sizeof(path))
-	    errorx(1, _("%s/%s/timing: %s"), session_dir,
+	if (plen <= 0 || (size_t)plen >= sizeof(path))
+	    fatalx(U_("%s/%s/timing: %s"), session_dir,
 		id, strerror(ENAMETOOLONG));
     }
     plen -= 7;
 
     /* Open files for replay, applying replay filter for the -f flag. */
     for (idx = 0; idx < IOFD_MAX; idx++) {
-	if (ISSET(replay_filter, 1 << idx) || idx == IOFD_TIMING) {
-	    if (open_io_fd(path, plen, io_fnames[idx], &io_fds[idx]) == -1)
-		error(1, _("unable to open %s"), path);
-	}
+	if (open_io_fd(path, plen, &io_log_files[idx]) == -1) 
+	    fatal(U_("unable to open %s"), path);
     }
 
     /* Parse log file. */
@@ -374,89 +360,9 @@ main(int argc, char *argv[])
     free_log_info(li);
     li = NULL;
 
-    fflush(stdout);
-    memset(&sa, 0, sizeof(sa));
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESETHAND;
-    sa.sa_handler = cleanup;
-    (void) sigaction(SIGINT, &sa, NULL);
-    (void) sigaction(SIGKILL, &sa, NULL);
-    (void) sigaction(SIGTERM, &sa, NULL);
-    (void) sigaction(SIGHUP, &sa, NULL);
-    sa.sa_flags = SA_RESTART;
-    sa.sa_handler = SIG_IGN;
-    (void) sigaction(SIGTSTP, &sa, NULL);
-    (void) sigaction(SIGQUIT, &sa, NULL);
+    /* Replay session corresponding to io_log_files[]. */
+    replay_session(max_wait, decimal);
 
-    /* XXX - read user input from /dev/tty and set STDOUT to raw if not a pipe */
-    /* Set stdin to raw mode if it is a tty */
-    interactive = isatty(STDIN_FILENO);
-    if (interactive) {
-	ch = fcntl(STDIN_FILENO, F_GETFL, 0);
-	if (ch != -1)
-	    (void) fcntl(STDIN_FILENO, F_SETFL, ch | O_NONBLOCK);
-	if (!term_raw(STDIN_FILENO, 1))
-	    error(1, _("unable to set tty to raw mode"));
-    }
-    fdsw = ecalloc(howmany(STDOUT_FILENO + 1, NFDBITS), sizeof(fd_mask));
-
-    /*
-     * Timing file consists of line of the format: "%f %d\n"
-     */
-#ifdef HAVE_ZLIB_H
-    while (gzgets(io_fds[IOFD_TIMING].g, buf, sizeof(buf)) != NULL) {
-#else
-    while (fgets(buf, sizeof(buf), io_fds[IOFD_TIMING].f) != NULL) {
-#endif
-	if (!parse_timing(buf, decimal, &idx, &seconds, &nbytes))
-	    errorx(1, _("invalid timing file line: %s"), buf);
-
-	if (interactive)
-	    check_input(STDIN_FILENO, &speed);
-
-	/* Adjust delay using speed factor and clamp to max_wait */
-	to_wait = seconds / speed;
-	if (max_wait && to_wait > max_wait)
-	    to_wait = max_wait;
-	delay(to_wait);
-
-	/* Even if we are not relaying, we still have to delay. */
-	if (io_fds[idx].v == NULL)
-	    continue;
-
-	/* All output is sent to stdout. */
-	while (nbytes != 0) {
-	    if (nbytes > sizeof(buf))
-		len = sizeof(buf);
-	    else
-		len = nbytes;
-#ifdef HAVE_ZLIB_H
-	    nread = gzread(io_fds[idx].g, buf, len);
-#else
-	    nread = fread(buf, 1, len, io_fds[idx].f);
-#endif
-	    nbytes -= nread;
-	    off = 0;
-	    do {
-		/* no stdio, must be unbuffered */
-		nwritten = write(STDOUT_FILENO, buf + off, nread - off);
-		if (nwritten == -1) {
-		    if (errno == EINTR)
-			continue;
-		    if (errno == EAGAIN) {
-			FD_SET(STDOUT_FILENO, fdsw);
-			do {
-			    nready = select(STDOUT_FILENO + 1, NULL, fdsw, NULL, NULL);
-			} while (nready == -1 && errno == EINTR);
-			if (nready == 1)
-			    continue;
-		    }
-		    error(1, _("writing to standard output"));
-		}
-		off += nwritten;
-	    } while (nread > off);
-	}
-    }
     term_restore(STDIN_FILENO, 1);
 done:
     sudo_debug_exit_int(__func__, __FILE__, __LINE__, sudo_debug_subsys, exitcode);
@@ -464,57 +370,263 @@ done:
 }
 
 static void
-delay(double secs)
+replay_session(const double max_wait, const char *decimal)
 {
-    struct timespec ts, rts;
-    int rval;
+    struct sudo_event *input_ev, *output_ev;
+    unsigned int i, iovcnt = 0, iovmax = 0;
+    struct sudo_event_base *evbase;
+    struct iovec iovb, *iov = &iovb;
+    bool interactive = false;
+    struct write_closure wc;
+    char buf[LINE_MAX];
+    sigaction_t sa;
+    int idx;
+    debug_decl(replay_session, SUDO_DEBUG_UTIL)
+
+    /* Restore tty settings if interupted. */
+    fflush(stdout);
+    memset(&sa, 0, sizeof(sa));
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESETHAND;
+    sa.sa_handler = sudoreplay_handler;
+    (void) sigaction(SIGINT, &sa, NULL);
+    (void) sigaction(SIGTERM, &sa, NULL);
+    (void) sigaction(SIGHUP, &sa, NULL);
+    (void) sigaction(SIGQUIT, &sa, NULL);
+
+    /* Don't suspend as we cannot restore the screen on resume. */
+    sa.sa_flags = SA_RESTART;
+    sa.sa_handler = SIG_IGN;
+    (void) sigaction(SIGTSTP, &sa, NULL);
+
+    /* XXX - read user input from /dev/tty and set STDOUT to raw if not a pipe */
+    /* Set stdin to raw mode if it is a tty */
+    interactive = isatty(STDIN_FILENO);
+    if (interactive) {
+	idx = fcntl(STDIN_FILENO, F_GETFL, 0);
+	if (idx != -1)
+	    (void) fcntl(STDIN_FILENO, F_SETFL, idx | O_NONBLOCK);
+	if (!term_raw(STDIN_FILENO, 1))
+	    fatal(U_("unable to set tty to raw mode"));
+    }
+
+    /* Setup event base and input/output events. */
+    evbase = sudo_ev_base_alloc();
+    if (evbase == NULL)
+	fatal(NULL);
+    input_ev = sudo_ev_alloc(STDIN_FILENO, interactive ? SUDO_EV_READ :
+	SUDO_EV_TIMEOUT, check_input, sudo_ev_self_cbarg());
+    if (input_ev == NULL)
+        fatal(NULL);
+    output_ev = sudo_ev_alloc(STDIN_FILENO, SUDO_EV_WRITE, write_output, &wc);
+    if (output_ev == NULL)
+        fatal(NULL);
 
     /*
-     * Typical max resolution is 1/HZ but we can't portably check that.
-     * If the interval is small enough, just ignore it.
+     * Read each line of the timing file, displaying the output streams.
      */
-    if (secs < 0.0001)
-	return;
+#ifdef HAVE_ZLIB_H
+    while (gzgets(io_log_files[IOFD_TIMING].fd.g, buf, sizeof(buf)) != NULL) {
+#else
+    while (fgets(buf, sizeof(buf), io_log_files[IOFD_TIMING].fd.f) != NULL) {
+#endif
+	size_t len, nbytes, nread;
+	double seconds, to_wait;
+	struct timeval timeout;
+	bool need_nlcr = false;
+	char last_char = '\0';
 
-    rts.tv_sec = secs;
-    rts.tv_nsec = (secs - (double) rts.tv_sec) * 1000000000.0;
-    do {
-      memcpy(&ts, &rts, sizeof(ts));
-      rval = nanosleep(&ts, &rts);
-    } while (rval == -1 && errno == EINTR);
-    if (rval == -1) {
-	error2(1, _("nanosleep: tv_sec %ld, tv_nsec %ld"),
-	    (long)ts.tv_sec, (long)ts.tv_nsec);
+	buf[strcspn(buf, "\n")] = '\0';
+	if (!parse_timing(buf, decimal, &idx, &seconds, &nbytes))
+	    fatalx(U_("invalid timing file line: %s"), buf);
+
+	/* Adjust delay using speed factor and clamp to max_wait */
+	to_wait = seconds / speed_factor;
+	if (max_wait && to_wait > max_wait)
+	    to_wait = max_wait;
+
+	/* Convert delay to a timeval. */
+	timeout.tv_sec = to_wait;
+	timeout.tv_usec = (to_wait - timeout.tv_sec) * 1000000.0;
+
+	/* Run event event loop to delay and get keyboard input. */
+	sudo_ev_add(evbase, input_ev, &timeout, false);
+	sudo_ev_loop(evbase, 0);
+
+	/* Even if we are not replaying, we still have to delay. */
+	if (io_log_files[idx].fd.v == NULL)
+	    continue;
+
+	/* Check whether we need to convert newline to CR LF pairs. */
+	if (interactive) 
+	    need_nlcr = (idx == IOFD_STDOUT || idx == IOFD_STDERR);
+
+	/* All output is sent to stdout. */
+	/* XXX - assumes no wall clock time spent writing output. */
+	while (nbytes != 0) {
+	    if (nbytes > sizeof(buf))
+		len = sizeof(buf);
+	    else
+		len = nbytes;
+#ifdef HAVE_ZLIB_H
+	    nread = gzread(io_log_files[idx].fd.g, buf, len);
+#else
+	    nread = fread(buf, 1, len, io_log_files[idx].fd.f);
+#endif
+	    nbytes -= nread;
+
+	    /* Convert newline to carriage return + linefeed if needed. */
+	    if (need_nlcr) {
+		size_t remainder = nread;
+		size_t linelen;
+		char *cp = buf;
+		char *ep = buf - 1;
+
+		/* Handle a "\r\n" pair that spans a buffer. */
+		if (last_char == '\r' && buf[0] == '\n') {
+		    ep++;
+		    remainder--;
+		}
+
+		iovcnt = 0;
+		while ((ep = memchr(ep + 1, '\n', remainder)) != NULL) {
+		    /* Is there already a carriage return? */
+		    if (cp != ep && ep[-1] == '\r') {
+			remainder = (size_t)(&buf[nread - 1] - ep);
+		    	continue;
+		    }
+
+		    /* Store the line in iov followed by \r\n pair. */
+		    if (iovcnt + 3 > iovmax) {
+			iov = iovmax ?
+			    erealloc3(iov, iovmax <<= 1, sizeof(*iov)) :
+			    emalloc2(iovmax = 32, sizeof(*iov));
+		    }
+		    linelen = (size_t)(ep - cp) + 1;
+		    iov[iovcnt].iov_base = cp;
+		    iov[iovcnt].iov_len = linelen - 1; /* not including \n */
+		    iovcnt++;
+		    iov[iovcnt].iov_base = "\r\n";
+		    iov[iovcnt].iov_len = 2;
+		    iovcnt++;
+		    cp = ep + 1;
+		    remainder -= linelen;
+		}
+		if ((size_t)(cp - buf) != nread) {
+		    /*
+		     * Partial line without a linefeed or multiple lines
+		     * with \r\n pairs.
+		     */
+		    iov[iovcnt].iov_base = cp;
+		    iov[iovcnt].iov_len = nread - (cp - buf);
+		    iovcnt++;
+		}
+		last_char = buf[nread - 1]; /* stash last char of old buffer */
+	    } else {
+		/* No conversion needed. */
+		iov[0].iov_base = buf;
+		iov[0].iov_len = nread;
+		iovcnt = 1;
+	    }
+
+	    /* Setup closure for write_output. */
+	    wc.wevent = output_ev;
+	    wc.iov = iov;
+	    wc.iovcnt = iovcnt;
+	    wc.nbytes = 0;
+	    for (i = 0; i < iovcnt; i++)
+		wc.nbytes += iov[i].iov_len;
+
+	    /* Run event event loop to write output. */
+	    /* XXX - should use a single event loop with a circular buffer. */
+	    sudo_ev_add(evbase, output_ev, NULL, false);
+	    sudo_ev_loop(evbase, 0);
+	}
     }
+    debug_return;
 }
 
 static int
-open_io_fd(char *path, int len, const char *suffix, union io_fd *fdp)
+open_io_fd(char *path, int len, struct io_log_file *iol)
 {
-    path[len] = '\0';
-    strlcat(path, suffix, PATH_MAX);
     debug_decl(open_io_fd, SUDO_DEBUG_UTIL)
 
+    if (!iol->enabled)
+	debug_return_int(0);
+
+    path[len] = '\0';
+    strlcat(path, iol->suffix, PATH_MAX);
 #ifdef HAVE_ZLIB_H
-    fdp->g = gzopen(path, "r");
+    iol->fd.g = gzopen(path, "r");
 #else
-    fdp->f = fopen(path, "r");
+    iol->fd.f = fopen(path, "r");
 #endif
-    debug_return_int(fdp->v ? 0 : -1);
+    debug_return_int(iol->fd.v ? 0 : -1);
+}
+
+static void
+write_output(int fd, int what, void *v)
+{
+    struct write_closure *wc = v;
+    ssize_t nwritten;
+    size_t count, remainder;
+    unsigned int i;
+    debug_decl(write_output, SUDO_DEBUG_UTIL)
+
+    nwritten = writev(STDOUT_FILENO, wc->iov, wc->iovcnt);
+    switch (nwritten) {
+    case -1:
+	if (errno != EINTR && errno != EAGAIN)
+	    fatal(U_("unable to write to %s"), "stdout");
+	break;
+    case 0:
+	break;
+    default:
+	remainder = wc->nbytes - nwritten;
+	if (remainder == 0) {
+	    /* writev completed */
+	    debug_return;
+	}
+
+	/* short writev, adjust iov so we can write the remainder. */
+	count = 0;
+	i = wc->iovcnt;
+	while (i--) {
+	    count += wc->iov[i].iov_len;
+	    if (count == remainder) {
+		wc->iov += i;
+		wc->iovcnt -= i;
+		break;
+	    }
+	    if (count > remainder) {
+		size_t off = (count - remainder);
+		wc->iov[i].iov_base = (char *)wc->iov[i].iov_base + off;
+		wc->iov[i].iov_len -= off;
+		wc->iov += i;
+		wc->iovcnt -= i;
+		break;
+	    }
+	}
+	break;
+    }
+
+    /* Reschedule event to write remainder. */
+    sudo_ev_add(sudo_ev_get_base(wc->wevent), wc->wevent, NULL, false);
+    debug_return;
 }
 
 /*
  * Build expression list from search args
  */
 static int
-parse_expr(struct search_node **headp, char *argv[])
+parse_expr(struct search_node_list *head, char *argv[], bool sub_expr)
 {
-    struct search_node *sn, *newsn;
-    char or = 0, not = 0, type, **av;
+    bool or = false, not = false;
+    struct search_node *sn;
+    char type, **av;
     debug_decl(parse_expr, SUDO_DEBUG_UTIL)
 
-    sn = *headp;
-    for (av = argv; *av; av++) {
+    for (av = argv; *av != NULL; av++) {
 	switch (av[0][0]) {
 	case 'a': /* and (ignore) */
 	    if (strncmp(*av, "and", strlen(*av)) != 0)
@@ -523,16 +635,16 @@ parse_expr(struct search_node **headp, char *argv[])
 	case 'o': /* or */
 	    if (strncmp(*av, "or", strlen(*av)) != 0)
 		goto bad;
-	    or = 1;
+	    or = true;
 	    continue;
 	case '!': /* negate */
 	    if (av[0][1] != '\0')
 		goto bad;
-	    not = 1;
+	    not = true;
 	    continue;
 	case 'c': /* command */
 	    if (av[0][1] == '\0')
-		errorx(1, _("ambiguous expression \"%s\""), *av);
+		fatalx(U_("ambiguous expression \"%s\""), *av);
 	    if (strncmp(*av, "cwd", strlen(*av)) == 0)
 		type = ST_CWD;
 	    else if (strncmp(*av, "command", strlen(*av)) == 0)
@@ -557,7 +669,7 @@ parse_expr(struct search_node **headp, char *argv[])
 	    break;
 	case 't': /* tty or to date */
 	    if (av[0][1] == '\0')
-		errorx(1, _("ambiguous expression \"%s\""), *av);
+		fatalx(U_("ambiguous expression \"%s\""), *av);
 	    if (strncmp(*av, "todate", strlen(*av)) == 0)
 		type = ST_TODATE;
 	    else if (strncmp(*av, "tty", strlen(*av)) == 0)
@@ -573,101 +685,85 @@ parse_expr(struct search_node **headp, char *argv[])
 	case '(': /* start sub-expression */
 	    if (av[0][1] != '\0')
 		goto bad;
-	    if (stack_top + 1 == STACK_NODE_SIZE) {
-		errorx(1, _("too many parenthesized expressions, max %d"),
-		    STACK_NODE_SIZE);
-	    }
-	    node_stack[stack_top++] = sn;
 	    type = ST_EXPR;
 	    break;
 	case ')': /* end sub-expression */
 	    if (av[0][1] != '\0')
 		goto bad;
-	    /* pop */
-	    if (--stack_top < 0)
-		errorx(1, _("unmatched ')' in expression"));
-	    if (node_stack[stack_top])
-		sn->next = node_stack[stack_top]->next;
+	    if (!sub_expr)
+		fatalx(U_("unmatched ')' in expression"));
 	    debug_return_int(av - argv + 1);
 	bad:
 	default:
-	    errorx(1, _("unknown search term \"%s\""), *av);
+	    fatalx(U_("unknown search term \"%s\""), *av);
 	    /* NOTREACHED */
 	}
 
 	/* Allocate new search node */
-	newsn = ecalloc(1, sizeof(*newsn));
-	newsn->type = type;
-	newsn->or = or;
-	newsn->negated = not;
-	/* newsn->next = NULL; */
+	sn = ecalloc(1, sizeof(*sn));
+	sn->type = type;
+	sn->or = or;
+	sn->negated = not;
 	if (type == ST_EXPR) {
-	    av += parse_expr(&newsn->u.expr, av + 1);
+	    STAILQ_INIT(&sn->u.expr);
+	    av += parse_expr(&sn->u.expr, av + 1, true);
 	} else {
 	    if (*(++av) == NULL)
-		errorx(1, _("%s requires an argument"), av[-1]);
+		fatalx(U_("%s requires an argument"), av[-1]);
 #ifdef HAVE_REGCOMP
 	    if (type == ST_PATTERN) {
-		if (regcomp(&newsn->u.cmdre, *av, REG_EXTENDED|REG_NOSUB) != 0)
-		    errorx(1, _("invalid regular expression: %s"), *av);
+		if (regcomp(&sn->u.cmdre, *av, REG_EXTENDED|REG_NOSUB) != 0)
+		    fatalx(U_("invalid regular expression: %s"), *av);
 	    } else
 #endif
 	    if (type == ST_TODATE || type == ST_FROMDATE) {
-		newsn->u.tstamp = get_date(*av);
-		if (newsn->u.tstamp == -1)
-		    errorx(1, _("could not parse date \"%s\""), *av);
+		sn->u.tstamp = get_date(*av);
+		if (sn->u.tstamp == -1)
+		    fatalx(U_("could not parse date \"%s\""), *av);
 	    } else {
-		newsn->u.ptr = *av;
+		sn->u.ptr = *av;
 	    }
 	}
-	not = or = 0; /* reset state */
-	if (sn)
-	    sn->next = newsn;
-	else
-	    *headp = newsn;
-	sn = newsn;
+	not = or = false; /* reset state */
+	STAILQ_INSERT_TAIL(head, sn, entries);
     }
-    if (stack_top)
-	errorx(1, _("unmatched '(' in expression"));
+    if (sub_expr)
+	fatalx(U_("unmatched '(' in expression"));
     if (or)
-	errorx(1, _("illegal trailing \"or\""));
+	fatalx(U_("illegal trailing \"or\""));
     if (not)
-	errorx(1, _("illegal trailing \"!\""));
+	fatalx(U_("illegal trailing \"!\""));
 
     debug_return_int(av - argv);
 }
 
 static bool
-match_expr(struct search_node *head, struct log_info *log)
+match_expr(struct search_node_list *head, struct log_info *log, bool last_match)
 {
     struct search_node *sn;
-    bool matched = true;
+    bool res, matched = last_match;
     int rc;
     debug_decl(match_expr, SUDO_DEBUG_UTIL)
 
-    for (sn = head; sn; sn = sn->next) {
-	/* If we have no match, skip ahead to the next OR entry. */
-	if (!matched && !sn->or)
-	    continue;
-
+    STAILQ_FOREACH(sn, head, entries) {
 	switch (sn->type) {
 	case ST_EXPR:
-	    matched = match_expr(sn->u.expr, log);
+	    res = match_expr(&sn->u.expr, log, matched);
 	    break;
 	case ST_CWD:
-	    matched = strcmp(sn->u.cwd, log->cwd) == 0;
+	    res = strcmp(sn->u.cwd, log->cwd) == 0;
 	    break;
 	case ST_TTY:
-	    matched = strcmp(sn->u.tty, log->tty) == 0;
+	    res = strcmp(sn->u.tty, log->tty) == 0;
 	    break;
 	case ST_RUNASGROUP:
-	    matched = strcmp(sn->u.runas_group, log->runas_group) == 0;
+	    res = strcmp(sn->u.runas_group, log->runas_group) == 0;
 	    break;
 	case ST_RUNASUSER:
-	    matched = strcmp(sn->u.runas_user, log->runas_user) == 0;
+	    res = strcmp(sn->u.runas_user, log->runas_user) == 0;
 	    break;
 	case ST_USER:
-	    matched = strcmp(sn->u.user, log->user) == 0;
+	    res = strcmp(sn->u.user, log->user) == 0;
 	    break;
 	case ST_PATTERN:
 #ifdef HAVE_REGCOMP
@@ -675,22 +771,27 @@ match_expr(struct search_node *head, struct log_info *log)
 	    if (rc && rc != REG_NOMATCH) {
 		char buf[BUFSIZ];
 		regerror(rc, &sn->u.cmdre, buf, sizeof(buf));
-		errorx(1, "%s", buf);
+		fatalx("%s", buf);
 	    }
-	    matched = rc == REG_NOMATCH ? 0 : 1;
+	    res = rc == REG_NOMATCH ? 0 : 1;
 #else
-	    matched = strstr(log.cmd, sn->u.pattern) != NULL;
+	    res = strstr(log.cmd, sn->u.pattern) != NULL;
 #endif
 	    break;
 	case ST_FROMDATE:
-	    matched = log->tstamp >= sn->u.tstamp;
+	    res = log->tstamp >= sn->u.tstamp;
 	    break;
 	case ST_TODATE:
-	    matched = log->tstamp <= sn->u.tstamp;
+	    res = log->tstamp <= sn->u.tstamp;
 	    break;
+	default:
+	    fatalx(U_("unknown search type %d"), sn->type);
+	    /* NOTREACHED */
 	}
 	if (sn->negated)
-	    matched = !matched;
+	    res = !res;
+	matched = sn->or ? (res || last_match) : (res && last_match);
+	last_match = matched;
     }
     debug_return_bool(matched);
 }
@@ -700,13 +801,14 @@ parse_logfile(char *logfile)
 {
     FILE *fp;
     char *buf = NULL, *cp, *ep;
+    const char *errstr;
     size_t bufsize = 0, cwdsize = 0, cmdsize = 0;
     struct log_info *li = NULL;
-    debug_decl(list_session, SUDO_DEBUG_UTIL)
+    debug_decl(parse_logfile, SUDO_DEBUG_UTIL)
 
     fp = fopen(logfile, "r");
     if (fp == NULL) {
-	warning(_("unable to open %s"), logfile);
+	warning(U_("unable to open %s"), logfile);
 	goto bad;
     }
 
@@ -720,6 +822,7 @@ parse_logfile(char *logfile)
     if (getline(&buf, &bufsize, fp) == -1 ||
 	getline(&li->cwd, &cwdsize, fp) == -1 ||
 	getline(&li->cmd, &cmdsize, fp) == -1) {
+	warning(U_("%s: invalid log file"), logfile);
 	goto bad;
     }
 
@@ -730,45 +833,74 @@ parse_logfile(char *logfile)
     /*
      * Crack the log line (rows and cols not present in old versions).
      *	timestamp:user:runas_user:runas_group:tty:rows:cols
+     * XXX - probably better to use strtok and switch on the state.
      */
     buf[strcspn(buf, "\n")] = '\0';
+    cp = buf;
 
     /* timestamp */
-    if ((ep = strchr(buf, ':')) == NULL)
+    if ((ep = strchr(cp, ':')) == NULL) {
+	warning(U_("%s: time stamp field is missing"), logfile);
 	goto bad;
-    if ((li->tstamp = atoi(buf)) == 0)
+    }
+    *ep = '\0';
+    li->tstamp = sizeof(time_t) == 4 ? strtonum(cp, INT_MIN, INT_MAX, &errstr) :
+	strtonum(cp, LLONG_MIN, LLONG_MAX, &errstr);
+    if (errstr != NULL) {
+	warning(U_("%s: time stamp %s: %s"), logfile, cp, errstr);
 	goto bad;
+    }
 
     /* user */
     cp = ep + 1;
-    if ((ep = strchr(cp, ':')) == NULL)
+    if ((ep = strchr(cp, ':')) == NULL) {
+	warning(U_("%s: user field is missing"), logfile);
 	goto bad;
+    }
     li->user = estrndup(cp, (size_t)(ep - cp));
 
     /* runas user */
     cp = ep + 1;
-    if ((ep = strchr(cp, ':')) == NULL)
+    if ((ep = strchr(cp, ':')) == NULL) {
+	warning(U_("%s: runas user field is missing"), logfile);
 	goto bad;
+    }
     li->runas_user = estrndup(cp, (size_t)(ep - cp));
 
     /* runas group */
     cp = ep + 1;
-    if ((ep = strchr(cp, ':')) == NULL)
+    if ((ep = strchr(cp, ':')) == NULL) {
+	warning(U_("%s: runas group field is missing"), logfile);
 	goto bad;
+    }
     if (cp != ep)
 	li->runas_group = estrndup(cp, (size_t)(ep - cp));
 
     /* tty, followed by optional rows + columns */
     cp = ep + 1;
     if ((ep = strchr(cp, ':')) == NULL) {
+	/* just the tty */
 	li->tty = estrdup(cp);
     } else {
+	/* tty followed by rows + columns */
 	li->tty = estrndup(cp, (size_t)(ep - cp));
 	cp = ep + 1;
-	li->rows = atoi(cp);
+	/* need to NULL out separator to use strtonum() */
 	if ((ep = strchr(cp, ':')) != NULL) {
+	    *ep = '\0';
+	}
+	li->rows = strtonum(cp, 1, INT_MAX, &errstr);
+	if (errstr != NULL) {
+	    sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_LINENO,
+		"%s: tty rows %s: %s", logfile, cp, errstr);
+	}
+	if (ep != NULL) {
 	    cp = ep + 1;
-	    li->cols = atoi(cp);
+	    li->cols = strtonum(cp, 1, INT_MAX, &errstr);
+	    if (errstr != NULL) {
+		sudo_debug_printf(SUDO_DEBUG_ERROR|SUDO_DEBUG_LINENO,
+		    "%s: tty cols %s: %s", logfile, cp, errstr);
+	    }
 	}
     }
     fclose(fp);
@@ -776,7 +908,8 @@ parse_logfile(char *logfile)
     debug_return_ptr(li);
 
 bad:
-    fclose(fp);
+    if (fp != NULL)
+	fclose(fp);
     efree(buf);
     free_log_info(li);
     debug_return_ptr(NULL);
@@ -808,7 +941,7 @@ list_session(char *logfile, REGEX_T *re, const char *user, const char *tty)
 	goto done;
 
     /* Match on search expression if there is one. */
-    if (search_expr && !match_expr(search_expr, li))
+    if (!STAILQ_EMPTY(&search_expr) && !match_expr(&search_expr, li, true))
 	goto done;
 
     /* Convert from /var/log/sudo-sessions/00/00/01/log to 000001 */
@@ -849,7 +982,7 @@ session_compare(const void *v1, const void *v2)
     return strcmp(s1, s2);
 }
 
-/* XXX - always returns 0, calls error() on failure */
+/* XXX - always returns 0, calls fatal() on failure */
 static int
 find_sessions(const char *dir, REGEX_T *re, const char *user, const char *tty)
 {
@@ -857,19 +990,25 @@ find_sessions(const char *dir, REGEX_T *re, const char *user, const char *tty)
     struct dirent *dp;
     struct stat sb;
     size_t sdlen, sessions_len = 0, sessions_size = 36*36;
-    int i, len;
+    unsigned int i;
+    int len;
     char pathbuf[PATH_MAX], **sessions = NULL;
+#ifdef HAVE_STRUCT_DIRENT_D_TYPE
+    bool checked_type = true;
+#else
+    const bool checked_type = false;
+#endif
     debug_decl(find_sessions, SUDO_DEBUG_UTIL)
 
     d = opendir(dir);
     if (d == NULL)
-	error(1, _("unable to open %s"), dir);
+	fatal(U_("unable to open %s"), dir);
 
     /* XXX - would be faster to chdir and use relative names */
     sdlen = strlcpy(pathbuf, dir, sizeof(pathbuf));
     if (sdlen + 1 >= sizeof(pathbuf)) {
 	errno = ENAMETOOLONG;
-	error(1, "%s/", dir);
+	fatal("%s/", dir);
     }
     pathbuf[sdlen++] = '/';
     pathbuf[sdlen] = '\0';
@@ -882,8 +1021,14 @@ find_sessions(const char *dir, REGEX_T *re, const char *user, const char *tty)
 	    (dp->d_name[1] == '.' && dp->d_name[2] == '\0')))
 	    continue;
 #ifdef HAVE_STRUCT_DIRENT_D_TYPE
-	if (dp->d_type != DT_DIR)
-	    continue;
+	if (checked_type) {
+	    if (dp->d_type != DT_DIR) {
+		/* Not all file systems support d_type. */
+		if (dp->d_type != DT_UNKNOWN)
+		    continue;
+		checked_type = false;
+	    }
+	}
 #endif
 
 	/* Add name to session list. */
@@ -900,9 +1045,9 @@ find_sessions(const char *dir, REGEX_T *re, const char *user, const char *tty)
     for (i = 0; i < sessions_len; i++) {
 	len = snprintf(&pathbuf[sdlen], sizeof(pathbuf) - sdlen,
 	    "%s/log", sessions[i]);
-	if (len <= 0 || len >= sizeof(pathbuf) - sdlen) {
+	if (len <= 0 || (size_t)len >= sizeof(pathbuf) - sdlen) {
 	    errno = ENAMETOOLONG;
-	    error(1, "%s/%s/log", dir, sessions[i]);
+	    fatal("%s/%s/log", dir, sessions[i]);
 	}
 	efree(sessions[i]);
 
@@ -912,9 +1057,7 @@ find_sessions(const char *dir, REGEX_T *re, const char *user, const char *tty)
 	} else {
 	    /* Strip off "/log" and recurse if a dir. */
 	    pathbuf[sdlen + len - 4] = '\0';
-#ifndef HAVE_STRUCT_DIRENT_D_TYPE
-	    if (lstat(pathbuf, &sb) == 0 && S_ISDIR(sb.st_mode))
-#endif
+	    if (checked_type || (lstat(pathbuf, &sb) == 0 && S_ISDIR(sb.st_mode)))
 		find_sessions(pathbuf, re, user, tty);
 	}
     }
@@ -923,7 +1066,7 @@ find_sessions(const char *dir, REGEX_T *re, const char *user, const char *tty)
     debug_return_int(0);
 }
 
-/* XXX - always returns 0, calls error() on failure */
+/* XXX - always returns 0, calls fatal() on failure */
 static int
 list_sessions(int argc, char **argv, const char *pattern, const char *user,
     const char *tty)
@@ -932,14 +1075,14 @@ list_sessions(int argc, char **argv, const char *pattern, const char *user,
     debug_decl(list_sessions, SUDO_DEBUG_UTIL)
 
     /* Parse search expression if present */
-    parse_expr(&search_expr, argv);
+    parse_expr(&search_expr, argv, false);
 
 #ifdef HAVE_REGCOMP
     /* optional regex */
     if (pattern) {
 	re = &rebuf;
 	if (regcomp(re, pattern, REG_EXTENDED|REG_NOSUB) != 0)
-	    errorx(1, _("invalid regex: %s"), pattern);
+	    fatalx(U_("invalid regular expression: %s"), pattern);
     }
 #else
     re = (char *) pattern;
@@ -949,48 +1092,63 @@ list_sessions(int argc, char **argv, const char *pattern, const char *user,
 }
 
 /*
- * Check input for ' ', '<', '>'
- * pause, slow, fast
+ * Check input for ' ', '<', '>', return
+ * pause, slow, fast, next
  */
 static void
-check_input(int ttyfd, double *speed)
+check_input(int fd, int what, void *v)
 {
-    fd_set *fdsr;
-    int nready, paused = 0;
-    struct timeval tv;
+    struct sudo_event *ev = v;
+    struct sudo_event_base *evbase = sudo_ev_get_base(ev);
+    struct timeval tv, *timeout = NULL;
+    static bool paused = 0;
     char ch;
-    ssize_t n;
     debug_decl(check_input, SUDO_DEBUG_UTIL)
 
-    fdsr = ecalloc(howmany(ttyfd + 1, NFDBITS), sizeof(fd_mask));
-    for (;;) {
-	FD_SET(ttyfd, fdsr);
-	tv.tv_sec = 0;
-	tv.tv_usec = 0;
-
-	nready = select(ttyfd + 1, fdsr, NULL, NULL, paused ? NULL : &tv);
-	if (nready != 1)
+    if (ISSET(what, SUDO_EV_READ)) {
+	switch (read(fd, &ch, 1)) {
+	case -1:
+	    if (errno != EINTR && errno != EAGAIN)
+		fatal(U_("unable to read %s"), "stdin");
 	    break;
-	n = read(ttyfd, &ch, 1);
-	if (n == 1) {
+	case 0:
+	    /* Ignore EOF. */
+	    break;
+	case 1:
 	    if (paused) {
-		paused = 0;
-		continue;
+		/* Any key will unpause, event is finished. */
+		/* XXX - pause time could be less than timeout */
+		paused = false;
+		debug_return; /* XXX */
 	    }
 	    switch (ch) {
 	    case ' ':
-		paused = 1;
+		paused = true;
 		break;
 	    case '<':
-		*speed /= 2;
+		speed_factor /= 2;
 		break;
 	    case '>':
-		*speed *= 2;
+		speed_factor *= 2;
 		break;
+	    case '\r':
+	    case '\n':
+		debug_return; /* XXX */
 	    }
+	    break;
 	}
+	if (!paused) {
+	    /* Determine remaining timeout, if any. */
+	    sudo_ev_get_timeleft(ev, &tv);
+	    if (!timevalisset(&tv)) {
+		/* No time left, event is done. */
+		debug_return;
+	    }
+	    timeout = &tv;
+	}
+	/* Re-enable event. */
+	sudo_ev_add(evbase, ev, timeout, false);
     }
-    free(fdsr);
     debug_return;
 }
 
@@ -1002,12 +1160,8 @@ check_input(int ttyfd, double *speed)
  * Returns 1 on success and 0 on failure.
  */
 static int
-parse_timing(buf, decimal, idx, seconds, nbytes)
-    const char *buf;
-    const char *decimal;
-    int *idx;
-    double *seconds;
-    size_t *nbytes;
+parse_timing(const char *buf, const char *decimal, int *idx, double *seconds,
+    size_t *nbytes)
 {
     unsigned long ul;
     long l;
@@ -1017,9 +1171,15 @@ parse_timing(buf, decimal, idx, seconds, nbytes)
 
     /* Parse index */
     ul = strtoul(buf, &ep, 10);
-    if (ul > IOFD_MAX)
+    if (ep == buf || !isspace((unsigned char) *ep))
 	goto bad;
-    *idx = (int)ul;
+    if (ul >= IOFD_TIMING) {
+	if (ul != 6)
+	    goto bad;
+	/* work around a bug in timing files generated by sudo 1.8.7 */
+	timing_idx_adj = 2;
+    }
+    *idx = (int)ul - timing_idx_adj;
     for (cp = ep + 1; isspace((unsigned char) *cp); cp++)
 	continue;
 
@@ -1031,11 +1191,10 @@ parse_timing(buf, decimal, idx, seconds, nbytes)
      */
     errno = 0;
     l = strtol(cp, &ep, 10);
-    if ((errno == ERANGE && (l == LONG_MAX || l == LONG_MIN)) ||
-	l < 0 || l > INT_MAX ||
-	(*ep != '.' && strncmp(ep, decimal, strlen(decimal)) != 0)) {
+    if (ep == cp || (*ep != '.' && strncmp(ep, decimal, strlen(decimal)) != 0))
 	goto bad;
-    }
+    if (l < 0 || l > INT_MAX || (errno == ERANGE && l == LONG_MAX))
+	goto bad;
     *seconds = (double)l;
     cp = ep + (*ep == '.' ? 1 : strlen(decimal));
     d = 10.0;
@@ -1050,7 +1209,7 @@ parse_timing(buf, decimal, idx, seconds, nbytes)
 
     errno = 0;
     ul = strtoul(cp, &ep, 10);
-    if (errno == ERANGE && ul == ULONG_MAX)
+    if (ep == cp || *ep != '\0' || (errno == ERANGE && ul == ULONG_MAX))
 	goto bad;
     *nbytes = (size_t)ul;
 
@@ -1063,10 +1222,10 @@ static void
 usage(int fatal)
 {
     fprintf(fatal ? stderr : stdout,
-	_("usage: %s [-h] [-d directory] [-m max_wait] [-s speed_factor] ID\n"),
+	_("usage: %s [-h] [-d dir] [-m num] [-s num] ID\n"),
 	getprogname());
     fprintf(fatal ? stderr : stdout,
-	_("usage: %s [-h] [-d directory] -l [search expression]\n"),
+	_("usage: %s [-h] [-d dir] -l [search expression]\n"),
 	getprogname());
     if (fatal)
 	exit(1);
@@ -1078,23 +1237,32 @@ help(void)
     (void) printf(_("%s - replay sudo session logs\n\n"), getprogname());
     usage(0);
     (void) puts(_("\nOptions:\n"
-	"  -d directory     specify directory for session logs\n"
-	"  -f filter        specify which I/O type to display\n"
-	"  -h               display help message and exit\n"
-	"  -l [expression]  list available session IDs that match expression\n"
-	"  -m max_wait      max number of seconds to wait between events\n"
-	"  -s speed_factor  speed up or slow down output\n"
-	"  -V               display version information and exit"));
+	"  -d, --directory=dir  specify directory for session logs\n"
+	"  -f, --filter=filter  specify which I/O type(s) to display\n"
+	"  -h, --help           display help message and exit\n"
+	"  -l, --list           list available session IDs, with optional expression\n"
+	"  -m, --max-wait=num   max number of seconds to wait between events\n"
+	"  -s, --speed=num      speed up or slow down output\n"
+	"  -V, --version        display version information and exit"));
     exit(0);
 }
 
 /*
- * Cleanup hook for error()/errorx()
+ * Cleanup hook for fatal()/fatalx()
   */
-void
-cleanup(int signo)
+static void
+sudoreplay_cleanup(void)
 {
     term_restore(STDIN_FILENO, 0);
-    if (signo)
-	kill(getpid(), signo);
+}
+
+/*
+ * Signal handler for SIGINT, SIGTERM, SIGHUP, SIGQUIT
+ * Must be installed with SA_RESETHAND enabled.
+ */
+static void
+sudoreplay_handler(int signo)
+{
+    term_restore(STDIN_FILENO, 0);
+    kill(getpid(), signo);
 }

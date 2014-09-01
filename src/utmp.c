@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2011-2013 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -17,7 +17,6 @@
 #include <config.h>
 
 #include <sys/types.h>
-#include <sys/param.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <stdio.h>
@@ -41,7 +40,7 @@
 #ifdef HAVE_UNISTD_H
 # include <unistd.h>
 #endif /* HAVE_UNISTD_H */
-#if TIME_WITH_SYS_TIME
+#ifdef TIME_WITH_SYS_TIME
 # include <time.h>
 #endif
 #ifdef HAVE_UTMPX_H
@@ -53,6 +52,7 @@
 # include <ttyent.h>
 #endif
 #include <fcntl.h>
+#include <signal.h>
 
 #include "sudo.h"
 #include "sudo_exec.h"
@@ -275,12 +275,12 @@ utmp_slot(const char *line, int ttyfd)
      * doesn't take an argument.
      */
     if ((sfd = dup(STDIN_FILENO)) == -1)
-	error(1, _("unable to save stdin"));
+	fatal(U_("unable to save stdin"));
     if (dup2(ttyfd, STDIN_FILENO) == -1)
-	error(1, _("unable to dup2 stdin"));
+	fatal(U_("unable to dup2 stdin"));
     slot = ttyslot();
     if (dup2(sfd, STDIN_FILENO) == -1)
-	error(1, _("unable to restore stdin"));
+	fatal(U_("unable to restore stdin"));
     close(sfd);
 
     debug_return_int(slot);
@@ -327,7 +327,11 @@ utmp_login(const char *from_line, const char *to_line, int ttyfd,
 	}
     }
     utmp_fill(to_line, user, ut_old, &utbuf);
+#ifdef HAVE_FSEEKO
+    if (fseeko(fp, slot * (off_t)sizeof(utbuf), SEEK_SET) == 0) {
+#else
     if (fseek(fp, slot * (long)sizeof(utbuf), SEEK_SET) == 0) {
+#endif
 	if (fwrite(&utbuf, sizeof(utbuf), 1, fp) == 1)
 	    rval = true;
     }
@@ -360,7 +364,11 @@ utmp_logout(const char *line, int status)
 # endif
 	    utmp_settime(&utbuf);
 	    /* Back up and overwrite record. */
+#ifdef HAVE_FSEEKO
+	    if (fseeko(fp, (off_t)0 - (off_t)sizeof(utbuf), SEEK_CUR) == 0) {
+#else
 	    if (fseek(fp, 0L - (long)sizeof(utbuf), SEEK_CUR) == 0) {
+#endif
 		if (fwrite(&utbuf, sizeof(utbuf), 1, fp) == 1)
 		    rval = true;
 	    }

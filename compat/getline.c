@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2010 Todd C. Miller <Todd.Miller@courtesan.com>
+ * Copyright (c) 2009-2010, 2012-2013 Todd C. Miller <Todd.Miller@courtesan.com>
  *
  * Permission to use, copy, modify, and distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,6 +15,8 @@
  */
 
 #include <config.h>
+
+#ifndef HAVE_GETLINE
 
 #include <sys/types.h>
 
@@ -52,7 +54,7 @@ getline(char **bufp, size_t *bufsizep, FILE *fp)
     buf = fgetln(fp, &len);
     if (buf) {
 	bufsize = *bufp ? *bufsizep : 0;
-	if (bufsize < len + 1) {
+	if (bufsize == 0 || bufsize - 1 < len) {
 	    bufsize = len + 1;
 	    cp = *bufp ? realloc(*bufp, bufsize) : malloc(bufsize);
 	    if (cp == NULL)
@@ -101,4 +103,5 @@ getline(char **bufp, size_t *bufsizep, FILE *fp)
     *bufsizep = bufsize;
     return len;
 }
-#endif
+#endif /* HAVE_FGETLN */
+#endif /* HAVE_GETLINE */

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Copyright 2012 Quest Software, Inc. ALL RIGHTS RESERVED
-pp_revision="355"
+pp_revision="371"
  # Copyright 2012 Quest Software, Inc.  ALL RIGHTS RESERVED.
  #
  # Redistribution and use in source and binary forms, with or without
@@ -2288,9 +2288,9 @@ pp_sd_write_files () {
 		# current working (source) directory, not the destination;
 		# we need to qualify them to prevent this.
 		case "$st" in
-		    /*) echo "$line $st $p";;
-		    *) echo "$line `dirname $p`/$st $p";;
+		    [!/]*) st="`dirname \"$p\"`/$st";;
 		esac
+		echo "$line -o $o -g $g -m $m $st $p"
 		;;
             *)
 		echo "$line -o $o -g $g -m $m $pp_destdir$p $p"
@@ -3847,7 +3847,7 @@ pp_backend_deb_init () {
     pp_deb_release=
     pp_deb_arch=
     pp_deb_arch_std=
-    pp_deb_maintainer=support@quest.com
+    pp_deb_maintainer="Quest Software, Inc <support@quest.com>"
     pp_deb_copyright=
     pp_deb_distro=
     pp_deb_control_description=
@@ -3863,9 +3863,6 @@ pp_backend_deb_init () {
 
     # Make sure any programs we require are installed
     pp_deb_check_required_programs
-
-    # Set generated/interrogated platforms variables
-    pp_deb_munge_description
 }
 
 pp_deb_check_required_programs () {
@@ -3896,10 +3893,8 @@ pp_deb_check_required_programs () {
 pp_deb_munge_description () {
     # Insert a leading space on each line, replace blank lines with a
     #space followed by a full-stop.
-    pp_deb_control_description=`echo ${pp_deb_description:-$description} | \
-        sed "s,^\(.*\)$, \1, " \
-        | sed "s,^[ \t]*$, .,g"`
-
+    pp_deb_control_description="`echo ${pp_deb_description:-$description} | \
+        sed 's,^\(.*\)$, \1, ' | sed 's,^[ \t]*$, .,g' | fmt -w 80`"
 }
 
 pp_deb_detect_arch () {
@@ -3934,7 +3929,13 @@ pp_deb_conflict () {
 }
 
 pp_deb_make_control() {
-    package_name=`pp_deb_cmp_full_name "$1"`
+    local cmp="$1"
+    local installed_size
+
+    # compute the installed size
+    installed_size=`pp_deb_files_size < $pp_wrkdir/%files.$cmp`
+
+    package_name=`pp_deb_cmp_full_name "$cmp"`
     cat <<-.
 	Package: ${package_name}
 	Version: `pp_deb_version_final`-${pp_deb_release:-1}
@@ -3944,13 +3945,14 @@ pp_deb_make_control() {
 	Maintainer: ${pp_deb_maintainer:-$maintainer}
 	Description: ${pp_deb_summary:-$summary}
 	${pp_deb_control_description}
+	Installed-Size: ${installed_size}
 .
-    if test -s $pp_wrkdir/%depend."$1"; then
+    if test -s $pp_wrkdir/%depend."$cmp"; then
 	sed -ne '/^[ 	]*$/!s/^[ 	]*/Depends: /p' \
-	    < $pp_wrkdir/%depend."$1"
+	    < $pp_wrkdir/%depend."$cmp"
     fi
-    if test -s $pp_wrkdir/%conflict."$1"; then
-	pp_deb_conflict < $pp_wrkdir/%conflict."$1"
+    if test -s $pp_wrkdir/%conflict."$cmp"; then
+	pp_deb_conflict < $pp_wrkdir/%conflict."$cmp"
     fi
 }
 
@@ -4002,20 +4004,32 @@ pp_deb_handle_services() {
             #-- append %post code to install the svc
 	    test x"yes" = x"$enable" &&
             cat<<-. >> $pp_wrkdir/%post.run
-		# Install the service links
-		/usr/sbin/update-rc.d $svc defaults
+		case "\$1" in
+		    configure)
+		        # Install the service links
+		        update-rc.d $svc defaults
+		        ;;
+		esac
 .
 
             #-- prepend %preun code to stop svc
             cat<<-. | pp_prepend $pp_wrkdir/%preun.run
-		# Stop the $svc service
-		if test -x /usr/sbin/invoke-rc.d; then
-		    /usr/sbin/invoke-rc.d $svc stop
-		else
-		    /etc/init.d/$svc stop
-		fi
-		# Remove the service links
-		/usr/sbin/update-rc.d -f $svc remove
+		case "\$1" in
+		    remove|deconfigure|upgrade)
+		        # Stop the $svc service
+		        invoke-rc.d $svc stop
+		        ;;
+		esac
+.
+
+            #-- prepend %postun code to remove service
+            cat<<-. | pp_prepend $pp_wrkdir/%postun.run
+		case "\$1" in
+		    purge)
+		        # Remove the service links
+		        update-rc.d $svc remove
+		        ;;
+		esac
 .
         done
         #pp_deb_service_remove_common | pp_prepend $pp_wrkdir/%preun.run
@@ -4028,6 +4042,16 @@ pp_deb_fakeroot () {
     else
 	fakeroot -s $pp_wrkdir/fakeroot.save "$@"
     fi
+}
+
+pp_deb_files_size () {
+    local t m o g f p st
+    while read t m o g f p st; do
+        case $t in
+            f|s) du -k "${pp_destdir}$p";;
+            d)   echo 4;;
+        esac
+    done | awk '{n+=$1} END {print n}'
 }
 
 pp_deb_make_DEBIAN() {
@@ -4051,9 +4075,14 @@ pp_deb_make_DEBIAN() {
 	cp $pp_wrkdir/%conffiles.$cmp $data/DEBIAN/conffiles
     fi
 
+    # Create preinst
+    pp_deb_make_package_maintainer_script "$data/DEBIAN/preinst" \
+        "$pp_wrkdir/%pre.$cmp" "Pre-install script for $cmp_full_name"\
+        || exit $?
+
     # Create postinst
     pp_deb_make_package_maintainer_script "$data/DEBIAN/postinst" \
-        "$pp_wrkdir/%post.$cmp" "Post install script for $cmp_full_name"\
+        "$pp_wrkdir/%post.$cmp" "Post-install script for $cmp_full_name"\
         || exit $?
 
     # Create prerm
@@ -4141,12 +4170,15 @@ pp_deb_makedeb () {
 
     # Create md5sums
     pp_deb_make_md5sums $cmp `(cd $package_build_dir;
-	find . -type f -a -not -name DEBIAN | sed "s,^\./,,")` ||
+	find . -name DEBIAN -prune -o -type f -print | sed "s,^\./,,")` ||
 	    pp_die "Could not make DEBIAN md5sums for $cmp"
 }
 
 pp_backend_deb () {
     local debname
+
+    # Munge description for control file inclusion
+    pp_deb_munge_description
 
     # Handle services
     pp_deb_handle_services $cmp
@@ -4363,7 +4395,7 @@ pp_backend_deb_init_svc_vars () {
 
     lsb_required_start='$local_fs $network'
     lsb_should_start=
-    lsb_required_stop=
+    lsb_required_stop='$local_fs'
     lsb_description=
 
     start_priority=50
@@ -4376,7 +4408,7 @@ pp_deb_service_make_init_script () {
     local out=$pp_destdir$script
     local _process _cmd
 
-    pp_add_file_if_missing $script run 755 || return 0
+    pp_add_file_if_missing $script run 755 v || return 0
 
     #-- start out as an empty shell script
     cat <<-'.' >$out
@@ -4461,19 +4493,13 @@ do_start()
     then
         group_opt="--group $GROUP"
     fi
-    if [ "$VERBOSE" = no ]
-    then
-        quiet_opt="--quiet"
-    else
-        quiet_opt="--verbose"
-    fi
 
-	start-stop-daemon --start $quiet_opt $pidfile_opt $user_opt --exec $DAEMON --test > /dev/null \
+	start-stop-daemon --start --quiet $pidfile_opt $user_opt --exec $DAEMON --test > /dev/null \
 	    || return 1
 
     # Note: there seems to be no way to tell whether the daemon will fork itself or not, so pass
     # --background for now
-    start-stop-daemon --start $quiet_opt $pidfile_opt $user_opt --exec $DAEMON -- \
+    start-stop-daemon --start --quiet $pidfile_opt $user_opt --exec $DAEMON -- \
     	$DAEMON_ARGS \
     	|| return 2
 }
@@ -4499,13 +4525,7 @@ do_stop()
     then
         signal_opt="--signal $STOP_SIGNAL"
     fi
-    if [ "$VERBOSE" = "no" ]
-    then
-        quiet_opt="--quiet"
-    else
-        quiet_opt="--verbose"
-    fi
-	start-stop-daemon --stop $quiet_opt $signal_opt --retry=TERM/30/KILL/5 $pidfile_opt --name $NAME
+	start-stop-daemon --stop --quiet $signal_opt --retry=TERM/30/KILL/5 $pidfile_opt --name $NAME
 	RETVAL="$?"
 	[ "$RETVAL" = 2 ] && return 2
 	# Wait for children to finish too if this is a daemon that forks
@@ -4514,7 +4534,7 @@ do_stop()
 	# that waits for the process to drop all resources that could be
 	# needed by services started subsequently.  A last resort is to
 	# sleep for some time.
-	start-stop-daemon --stop $quiet_opt --oknodo --retry=0/30/KILL/5 --exec $DAEMON
+	start-stop-daemon --stop --quiet --oknodo --retry=0/30/KILL/5 --exec $DAEMON
 	[ "$?" = 2 ] && return 2
 	# Many daemons don't delete their pidfiles when they exit.
 	test -z $PIDFILE || rm -f $PIDFILE
@@ -4535,7 +4555,7 @@ do_reload() {
     fi
     if [ -n "$RELOAD_SIGNAL" ]
     then
-	    start-stop-daemon --stop --signal $RELOAD_SIGNAL $quiet_opt $pidfile_opt --name $NAME
+	    start-stop-daemon --stop --signal $RELOAD_SIGNAL --quiet $pidfile_opt --name $NAME
     fi
 	return 0
 }
@@ -6580,6 +6600,7 @@ pp_backend_macos_init () {
     pp_macos_pkg_readme=
     pp_macos_pkg_welcome=
     pp_macos_sudo=sudo
+    pp_macos_installer_plugin=
     # OS X puts the library version *before* the .dylib extension
     pp_shlib_suffix='*.dylib'
 }
@@ -6800,7 +6821,18 @@ pp_macos_bom_fix_parents () {
 	sub chk { my $d=shift;
 		  &chk(&dirname($d)) if $d =~ m,/,;
 		  unless ($seen{$d}++) {
+		    # Make sure we do not override system directories
+		    if ($d =~ m:^\./(etc|var)$:) {
+		      my $tgt = "private/$1";
+		      my ($sum, $len) = split(/\s+/, `/usr/bin/printf "$tgt" | /usr/bin/cksum /dev/stdin`);
+		      print "$d\t120755\t0/0\t$len\t$sum\t$tgt\n";
+		    } elsif ($d eq "." || $d eq "./Library") {
+		      print "$d\t41775\t0/80\n";
+		    } elsif ($d eq "./Applications" || $d eq "./Developer") {
+		      print "$d\t40775\t0/80\n";
+		    } else {
 		      print "$d\t40755\t0/0\n";
+		    }
 		  }
 		}
 	m/^(\S+)\s+(\d+)/;
@@ -7086,6 +7118,15 @@ CompressedSize 0
     awk '{ print "." $6 }' $filelists | sed 's:/$::' | sort | /usr/bin/cpio -o | pp_macos_rewrite_cpio $filelists | gzip -9f -c > $Contents/Archive.pax.gz
     )
 
+    # Copy installer plugins if any
+    if test -n "$pp_macos_installer_plugin"; then
+	if test ! -f "$pp_macos_installer_plugin/InstallerSections.plist"; then
+	    pp_error "Missing InstallerSections.plist file in $pp_macos_installer_plugin"
+	fi
+	mkdir -p $pkgdir/Plugins
+	cp -R "$pp_macos_installer_plugin"/* $pkgdir/Plugins
+    fi
+
     test -d $pp_wrkdir/bom_stage && $pp_macos_sudo rm -rf $pp_wrkdir/bom_stage
 
     rm -f ${name}-${version}.dmg
@@ -7254,6 +7295,15 @@ pp_backend_macos_flat () {
     cd $pp_destdir || pp_error "Can't cd to $pp_destdir"
     awk '{ print "." $6 }' $filelists | sed 's:/$::' | sort | /usr/bin/cpio -o | pp_macos_rewrite_cpio $filelists | gzip -9f -c > $bundledir/Payload
     )
+
+    # Copy installer plugins if any
+    if test -n "$pp_macos_installer_plugin"; then
+	if test ! -f "$pp_macos_installer_plugin/InstallerSections.plist"; then
+	    pp_error "Missing InstallerSections.plist file in $pp_macos_installer_plugin"
+	fi
+	mkdir -p $pkgdir/Plugins
+	cp -R "$pp_macos_installer_plugin"/* $pkgdir/Plugins
+    fi
 
     test -d $pp_wrkdir/bom_stage && $pp_macos_sudo rm -rf $pp_wrkdir/bom_stage
 
