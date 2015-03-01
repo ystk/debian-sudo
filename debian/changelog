@@ -1,3 +1,15 @@
+sudo (1.7.4p4-2.squeeze.5) squeeze-lts; urgency=medium
+
+  * Properly update manual pages for environment variable handling changes
+    made in 1.6.8p12-2
+  * Sanity check the TZ environment variable (CVE-2014-9680) (Closes: #772707)
+  * Document that a leading ':' is skipped when checking TZ for a
+    fully-qualified path name.
+  * Fix checking of environment variables specified on the command line
+    against env_delete, when env_reset is disabled (CVE-2014-0106)
+
+ -- Ben Hutchings <ben@decadent.org.uk>  Fri, 27 Feb 2015 15:57:19 +0000
+
 sudo (1.7.4p4-2.squeeze.4) stable-security; urgency=high
 
   * Fix cve-2013-1775: authentication bypass when the clock is set to the UNIX

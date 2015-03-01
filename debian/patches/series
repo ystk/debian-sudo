@@ -6,3 +6,6 @@ CVE-2012-2337.diff
 debian-changes-1.7.4p4-2.squeeze.3
 cve-2013-1775.patch
 cve-2013-1776.patch
+CVE-2014-9680-1.patch
+CVE-2014-9680-2.patch
+CVE-2014-0106.patch
