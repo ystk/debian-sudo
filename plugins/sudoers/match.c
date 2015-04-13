@@ -803,7 +803,7 @@ userpw_matches(const char *sudoers_user, const char *user, const struct passwd *
 
     if (pw != NULL && *sudoers_user == '#') {
 	uid = (uid_t) atoid(sudoers_user + 1, NULL, NULL, &errstr);
-	if (errstr != NULL && uid == pw->pw_uid) {
+	if (errstr == NULL && uid == pw->pw_uid) {
 	    rc = true;
 	    goto done;
 	}
@@ -830,7 +830,7 @@ group_matches(const char *sudoers_group, const struct group *gr)
 
     if (*sudoers_group == '#') {
 	gid = (gid_t) atoid(sudoers_group + 1, NULL, NULL, &errstr);
-	if (errstr != NULL && gid == gr->gr_gid) {
+	if (errstr == NULL && gid == gr->gr_gid) {
 	    rc = true;
 	    goto done;
 	}
@@ -939,6 +939,11 @@ netgr_matches(const char *netgr, const char *lhost, const char *shost, const cha
 #endif
     bool rc = false;
     debug_decl(netgr_matches, SUDO_DEBUG_MATCH)
+
+    if (!def_use_netgroups) {
+	sudo_debug_printf(SUDO_DEBUG_INFO, "netgroups are disabled");
+	debug_return_bool(false);
+    }
 
 #ifdef HAVE_INNETGR
     /* make sure we have a valid netgroup, sudo style */

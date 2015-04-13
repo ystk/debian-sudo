@@ -1,8 +1,456 @@
-2014-02-04  Todd C. Miller  <Todd.Miller@courtesan.com>
+2014-05-06  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* compat/getgrouplist.c, plugins/group_file/group_file.c,
+	plugins/system_group/system_group.c:
+	deal with NULL gr_mem here too
+	[0db43ed71001]
 
 	* NEWS, configure, configure.ac:
+	Sudo 1.8.10p3
+	[3f415a180023]
+
+2014-05-02  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* common/event.c:
+	Fix non-blocking mode. We only want to exit the event loop when
+	poll() or select() returns 0 and there are no active events. This
+	fixes a problem on some systems where the last buffer was not being
+	written when the command exited.
+	[deb6b1a7b241]
+
+2014-04-28  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/boottime.c, plugins/sudoers/sudoers.h:
+	Make get_boottime() return bool.
+	[9ff15a995d01]
+
+	* doc/CONTRIBUTORS, plugins/sudoers/boottime.c:
+	Fix fd leak on Linux when determing boot time. This is usually
+	masked by the closefrom() call in sudo. From Jamie Anderson. Bug
+	#645
+	[0b4c430e8b88]
+
+2014-04-15  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* doc/CONTRIBUTORS, plugins/sudoers/auth/pam.c:
+	Use PAM_REINITIALIZE_CRED instead of PAM_ESTABLISH_CRED when
+	changing the user. This is the correct flag to use with a program
+	that changes the uid like su or sudo and fixes a role problem on
+	Solaris. From Gary Winiger; Bug #642
+	[ec23c3bf41bb]
+
+	* plugins/sudoers/defaults.c:
+	pam_setcred should default to true; from Gary Winiger Bug #642
+	[23e6628ec546]
+
+2014-04-09  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* MANIFEST, plugins/sudoers/match.c,
+	plugins/sudoers/regress/testsudoers/test6.out.ok,
+	plugins/sudoers/regress/testsudoers/test6.sh,
+	plugins/sudoers/regress/testsudoers/test7.out.ok,
+	plugins/sudoers/regress/testsudoers/test7.sh:
+	Fix matching of uids and gids broken in sudo 1.8.9.
+	[315eff4add59]
+
+	* plugins/sudoers/testsudoers.c:
+	Fix -P option in usage()
+	[50753b6222b7]
+
+2014-03-19  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/check.c, plugins/sudoers/prompt.c,
+	plugins/sudoers/sudoers.h:
+	Fix expansion of %p in the prompt for "sudo -l" when rootpw, runaspw
+	or targetpw is set. Bug #639
+	[dff0208d1194]
+
+2014-03-17  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* NEWS, configure, configure.ac:
+	Sudo 1.8.10p2
+	[774ebec63b41]
+
+	* plugins/sudoers/timestamp.c:
+	Don't write an empty timestamp record when timestamp_timeout is
+	zero. If we find an empty record in the timestamp file, overwrite it
+	with a good one, truncating the file as needed.
+	[9c226d81b660]
+
+2014-03-15  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* doc/visudo.cat, doc/visudo.man.in, doc/visudo.mdoc.in:
+	Fix typos in description of the -x option. Bug #637
+	[6ff2bfaaf99d]
+
+2014-03-13  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* NEWS, configure, configure.ac:
+	Sudo 1.8.10p1
+	[33828a3385ad]
+
+	* plugins/sudoers/timestamp.c:
+	Fix typo/thinko that prevented "Defaults !tty_tickets" from working.
+	[f65cc29dbcc7]
+
+	* plugins/sudoers/parse.c:
+	Fix "sudo -l command" output when the matching command is negated.
+	Bug #636
+	[b4a92803f733]
+
+2014-03-11  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* MANIFEST, common/Makefile.in, common/regress/atofoo/atofoo_test.c,
+	common/regress/sudo_conf/test5.err.ok,
+	common/regress/tailq/hltq_test.c:
+	The atofoo_test and hltq_test tests now display their own test error
+	rate. Display pass/fail count separately for sudo_conf and
+	sudo_parseln tests. Check stderr output for the sudo_conf test.
+	[5c814709ac70]
+
+	* src/Makefile.in:
+	Don't run the check_ttyname test if cross compiling.
+	[874ecc1c3db0]
+
+	* plugins/sudoers/Makefile.in:
+	CWD no longer used.
+	[13b2f3c4269b]
+
+	* plugins/sudoers/Makefile.in:
+	Fix diff of toke and err output files in "make check"
+	[485cdf3c75e7]
+
+2014-03-07  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* src/po/de.mo, src/po/de.po:
+	sync with translationproject.org
+	[d246c72a2350]
+
+2014-03-06  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* configure, configure.ac:
+	Check whether ber.h is needed before ldap.h even if we are not using
+	any ber functions. Needed for older versions of nss ldap.
+	[c2310324dc34]
+
+	* plugins/sudoers/sssd.c:
+	Fix compiler warning in debug code.
+	[8ee4cb6cafad]
+
+	* MANIFEST, NEWS, doc/CONTRIBUTORS, src/po/ca.mo, src/po/ca.po:
+	Catalan translation for sudo from translationproject.org.
+	[d6af7d06ee36]
+
+2014-03-05  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* NEWS:
+	Document negation fix in JSON output.
+	[37a85423ae49]
+
+2014-03-04  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/visudo_json.c:
+	Fix handling of '!' operator when converting sudoers. We now add a
+	"negated" boolean flag to objects that have the '!' operator.
+	[071926c10280]
+
+2014-03-01  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* MANIFEST, NEWS, plugins/sudoers/po/cs.mo, plugins/sudoers/po/cs.po:
+	Czech translation for sudoers from translationproject.org
+	[c0aae297f7c1]
+
+2014-02-28  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* configure, configure.ac:
+	Try -libmldap before -lldap in case there is no link from
+	libibmldap.so to libldap.so. Since IBM ldap is installed under /opt
+	we should only be able to reach it if --with-ldap was given an
+	explicit path.
+
+	Only check for ber_set_option() if LBER_OPT_DEBUG_LEVEL is defined.
+	[89d50c29d737]
+
+2014-02-27  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/set_perms.c:
+	Fix typo in setreuid() PERM_ROOT error message.
+	[533415f53165]
+
+	* mkpkg:
+	No longer need to disable setresuid() on debian.
+	[96ba687c35f0]
+
+2014-02-26  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/timestamp.c:
+	Fix conversion of timestamp_timeout from double to struct timeval.
+	Also quiet a printf format warning on 32-bit systems.
+	[59d1f3094dda]
+
+2014-02-25  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* MANIFEST, NEWS, plugins/sudoers/po/sr.mo, plugins/sudoers/po/sr.po:
+	Serbian translation for sudoers from translationproject.org.
+	[7134b386d658]
+
+2014-02-24  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* doc/CONTRIBUTORS:
+	Add Ingo Schwarze
+	[114cdf286987]
+
+	* NEWS, plugins/sudoers/visudo_json.c:
+	When exporting sudoers in JSON format, use the same type of Options
+	object for both Defaults and Cmnd_Specs.
+	[caa57043e197]
+
+2014-02-17  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* compat/inet_pton.c:
+	Silence cppcheck false positive.
+	[b2781c42a80f]
+
+	* plugins/sudoers/po/fi.mo, plugins/sudoers/po/fi.po,
+	plugins/sudoers/po/pt_BR.mo, plugins/sudoers/po/pt_BR.po:
+	sync with translationproject.org
+	[baba43a6d682]
+
+	* NEWS, doc/UPGRADE:
+	Mention init.d scripts on AIX and HP-UX Mention sudoers group
+	mismatch fix
+	[0259cb1f7cae]
+
+	* INSTALL:
+	Talk about clearing files at boot time, not reboot time since it
+	happens when the system comes up, not down.
+	[e8e480bc34fd]
+
+	* plugins/sudoers/sudoers.c:
+	We also need to open the sudoers file as root if there is a GID
+	mismatch.
+	[2fb2ba6fc4e6]
+
+	* sudo.pp:
+	Install /etc/rc.d/init.d/sudo and /etc/rc.d/rc2.d/S90sudo for AIX
+	rpm packages.
+	[4aca1d318599]
+
+2014-02-16  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* src/Makefile.in:
+	Remove init.d file and link in uninstall target.
+	[249a9f105cdd]
+
+	* configure, configure.ac, sudo.pp:
+	Fix INIT_DIR for real this time.
+	[5444eb1afbc5]
+
+	* configure, configure.ac, sudo.pp:
+	Use correct init.d dir on HP-UX. Fix pp warnings from rc.d and
+	init.d dirs.
+	[809b54ef95f8]
+
+	* .hgignore, MANIFEST, configure, configure.ac, init.d/aix.sh.in,
+	init.d/hpux.sh.in, src/Makefile.in, sudo.pp:
+	First cut add installing an init.d file for HP-UX and AIX to remove
+	old sudo timestamp files at boot time.
+	[ec6d35c62d88]
+
+2014-02-15  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* doc/sudo.cat, doc/sudo.man.in, doc/sudo.mdoc.in:
+	Use .Ar macro instead of "file ..." Use ".Cm -" instead of ".Li -"
+	for the default login class. From Ingo Schwarze.
+	[f13ea603760e]
+
+	* doc/sudo.conf.mdoc.in, doc/sudo.mdoc.in, doc/sudo_plugin.mdoc.in,
+	doc/sudoers.ldap.mdoc.in, doc/sudoers.mdoc.in,
+	doc/sudoreplay.mdoc.in, doc/visudo.mdoc.in:
+	Remove some extraneous markup; from Ingo Schwarze
+	 * No need to explicitly end a macro with No before | because | counts
+	as middle punctuation and falls out of the macro, anyway.
+	 * No need to explicitly re-open in-line macros after | because |
+	counts as middle punctuation and the macros resume afterwards,
+	anyway.
+	 * Simplify the mnemonic remarks regarding the option letters, no need
+	for manual font and spacing control with No and Ns.
+	 * Trim Ns No to just Ns, it already implies No.
+	[cc63d66c6655]
+
+	* doc/sudoers.man.in, doc/sudoers.mdoc.in:
+	Move zerowidth space in :alpha: after the colon for consistency.
+	[799f6656c6e8]
+
+	* doc/sudo.cat, doc/sudo.conf.cat, doc/sudo.conf.man.in,
+	doc/sudo.man.in, doc/sudo_plugin.cat, doc/sudo_plugin.man.in,
+	doc/sudoers.cat, doc/sudoers.ldap.man.in, doc/sudoers.man.in,
+	doc/sudoreplay.cat, doc/sudoreplay.man.in, doc/visudo.cat,
+	doc/visudo.man.in:
+	regen
+	[14d682732b6f]
+
+	* doc/sudo.mdoc.in, doc/sudoreplay.mdoc.in, doc/visudo.mdoc.in:
+	Remove extraneous keeps in SYNOPSIS now that mandoc does implied
+	keeps when converting from mdoc to man.
+	[0f48fc289f29]
+
+	* doc/sudoers.mdoc.in:
+	Properly escape the : in :alpha:
+	[e41d4533a55f]
+
+	* doc/sudo.cat, doc/sudo.man.in, doc/sudo.mdoc.in:
+	Replace some uses of .Sy with .Ar, .Ev and .Pa as appropriate. From
+	Jan Stary.
+	[90ec488905de]
+
+2014-02-12  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/visudo_json.c:
+	Fix indentation of Defaults entries. The initial indent should be
+	outside the loop iterating over the entries.
+	[dc493c888fb2]
+
+2014-02-11  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/po/da.mo, plugins/sudoers/po/da.po,
+	plugins/sudoers/po/de.mo, plugins/sudoers/po/de.po,
+	plugins/sudoers/po/eo.mo, plugins/sudoers/po/eo.po,
+	plugins/sudoers/po/it.mo, plugins/sudoers/po/it.po,
+	plugins/sudoers/po/pl.mo, plugins/sudoers/po/pl.po,
+	plugins/sudoers/po/uk.mo, plugins/sudoers/po/uk.po,
+	plugins/sudoers/po/vi.mo, plugins/sudoers/po/vi.po:
+	sync with translationproject.org
+	[fc517bc0908e]
+
+	* common/aix.c, common/alloc.c, common/atoid.c, common/atomode.c,
+	common/fatal.c, common/gidlist.c, common/sudo_conf.c,
+	common/sudo_debug.c, compat/strsignal.c, compat/strtonum.c,
+	plugins/sudoers/audit.c, plugins/sudoers/bsm_audit.c,
+	plugins/sudoers/linux_audit.c, plugins/sudoers/locale.c,
+	plugins/sudoers/sudoers.h, plugins/sudoers/sudoreplay.c,
+	plugins/sudoers/visudo.c, plugins/sudoers/visudo_json.c,
+	src/locale_stub.c, src/net_ifs.c, src/sesh.c, src/sudo.h:
+	We must include gettext.h before missing.h as it includes system
+	headers. Also add missing DEFAULT_TEXT_DOMAIN defines in sudoers
+	audit code that does not include sudoers.h.
+	[3ac4aa43ce40]
+
+	* common/sudo_dso.c:
+	When emulating DSO_NEXT with shl_get() we need to skip the program's
+	handle. This used to be documented as being index -2 but now it
+	seems to be index 0. As this is not guaranteed we need to look up
+	the real handle value for PROG_HANDLE and skip it when interating
+	through all the DSOs. Fixes infinite recursion on HP-UX in the
+	getenv() replacement.
+	[ade1b3045232]
+
+	* src/env_hooks.c:
+	Export getenv() so it is visible to shared objects we link with.
+	[1ac08446a3a7]
+
+2014-02-08  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* common/regress/atofoo/atofoo_test.c,
+	common/regress/sudo_conf/conf_test.c,
+	common/regress/sudo_parseln/parseln_test.c,
+	common/regress/tailq/hltq_test.c,
+	plugins/sudoers/regress/parser/check_fill.c:
+	Add some initprogname() calls to the test programs.
+	[e4320585a88b]
+
+2014-02-07  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/po/sudoers.pot:
+	regen
+	[038d066a866d]
+
+	* doc/UPGRADE:
+	Mention that there is now a default LDAP search filter.
+	[6351da3f8377]
+
+	* doc/sudoers.ldap.cat, doc/sudoers.ldap.man.in,
+	doc/sudoers.ldap.mdoc.in:
+	Minor word choice change.
+	[7e59ab3eb453]
+
+	* NEWS, doc/sudoers.cat, doc/sudoers.man.in, doc/sudoers.mdoc.in,
+	plugins/sudoers/def_data.c, plugins/sudoers/def_data.h,
+	plugins/sudoers/def_data.in, plugins/sudoers/defaults.c,
+	plugins/sudoers/ldap.c, plugins/sudoers/match.c:
+	Add use_netgroups sudoers option. For LDAP-based sudoers, netgroup
+	support requires an expensive substring match on the server. If
+	netgroups are not needed, this option can be disabled to reduce the
+	load on the LDAP server.
+	[e6bd6c103390]
+
+2014-02-06  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/ldap.c:
+	Update copyright year.
+	[1299eed430a5]
+
+	* NEWS:
+	Mention LDAP changes.
+	[512b1e363587]
+
+	* doc/sudoers.ldap.cat, doc/sudoers.ldap.man.in,
+	doc/sudoers.ldap.mdoc.in, plugins/sudoers/ldap.c:
+	Use a default LDAP search filter of (objectClass=sudoRole). When
+	constructing the netgroup query, add (sudoUser=*) to the query so we
+	don't fall below the 3 character OpenLDAP substring threshold.
+	Otherwise the index for sudoUser will never be used for that query.
+	Pointed out by Michael Stroeder.
+	[54856973af41]
+
+	* plugins/sudoers/timestamp.c:
+	Don't warn about an insecure lecture dir twice. Display warnings in
+	the user's locale.
+	[2c56b8b6d6f9]
+
+2014-02-05  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* NEWS:
+	Mention the fix for ^Z at the password prompt when sudo was started
+	in the background.
+	[352d52ad1f7d]
+
+	* common/term.c, src/exec_pty.c:
+	In term_restore(), only restores the terminal if we are in the
+	foregroup process group. Instead of calling tcgetpgrp(), which is
+	racy, we set a temporary handler for SIGTTOU and check whether it
+	was received after a failed call to tcsetattr().
+	[94979d51daa2]
+
+	* MANIFEST, compat/getaddrinfo.c, compat/inet_pton.c, config.h.in,
+	configure, configure.ac, doc/LICENSE, include/missing.h, mkdep.pl,
+	plugins/sudoers/interfaces.c, plugins/sudoers/match_addr.c:
+	Use inet_pton() instead of inet_aton() and include a version from
+	BIND for those without it.
+	[fe61a27c76d3]
+
+	* common/regress/atofoo/atofoo_test.c:
+	Quiet a gcc warning.
+	[f197821892ea]
+
+	* compat/getaddrinfo.c:
+	Need to include limits.h for USHRT_MAX.
+	[d1d8bd9a0e01]
+
+2014-02-04  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* common/term.c, include/sudo_util.h:
+	Use bool for function return values instead of 1 or 0.
+	[99e357c0800b]
+
+	* configure, configure.ac:
+	Warn the user if the rundir needs to be cleared in the rc files.
+	Neither AIX not HP-UX clear /var/run (if it even exists).
+	[6cdbf57a2f9e]
+
+	* NEWS:
 	Update for sudo 1.8.9p5
-	[3ee678307ef4] <1.8>
+	[efb737c32615]
 
 	* src/preserve_fds.c:
 	When the closefrom limit is greater than any of the preserved fds,
@@ -12,11 +460,191 @@
 	value of lowfd after we are done relocating. Fixes bug #633
 	[a11206a31f28]
 
+	* common/term.c:
+	Document function return values.
+	[267bc85f6fbb]
+
+2014-02-03  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* src/exec_pty.c:
+	term_restore() now restarts itself so we don't need to do it
+	ourselves.
+	[a17e885d0b0a]
+
+	* common/term.c:
+	syscall restarting is broken on Mac OS X when interrupted by a tty
+	signal so restart tcsetattr() by hand. For details, see.
+	http://openradar.appspot.com/radar?id=6402578615107584
+	[3997b2a0577e]
+
+	* MANIFEST, common/Makefile.in, common/regress/atofoo/atofoo_test.c:
+	Add regress for atobool(), atoid() and atomode()
+	[e1cbdf86d6e2]
+
+	* plugins/sudoers/Makefile.in:
+	Add back boottime.lo
+	[0b7ddc31e13e]
+
+	* INSTALL:
+	Mention that rundir and vardir may be the same and what to do if
+	they are.
+	[301df9a31d43]
+
+	* MANIFEST, doc/sudoers.cat, doc/sudoers.man.in, doc/sudoers.mdoc.in,
+	plugins/sudoers/boottime.c, plugins/sudoers/sudoers.h,
+	plugins/sudoers/timestamp.c:
+	Bring back boot time checking code and zero out time stamp files
+	that predate the boot time. This should help systems w/o /var/run
+	where the admin has setup rc.d to clear the timestamp directory.
+	[e09389a8b1ca]
+
+	* configure, configure.ac:
+	Check libraries for inet_pton() if not in libc.
+	[9f9bd83895e8]
+
+2014-02-02  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* configure, configure.ac:
+	Fix clock_gettime() detection when it lives in librt. Some systems
+	have inet_aton() in libresolv (older Solaris).
+	[e5f7c8bc9a81]
+
+	* sudo.pp:
+	Avoid duplicate directories if vardir and rundir are the same.
+	[c5df5ebc191b]
+
+	* plugins/sudoers/po/sudoers.pot:
+	regen
+	[740b2cc42fea]
+
+	* doc/sudoers.cat, doc/sudoers.man.in, doc/sudoers.mdoc.in:
+	Elaborate on time stamp error message causes.
+	[2838fea2e21a]
+
+2014-02-01  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* sudo.pp:
+	Remove the time stamp dir and its contents when uninstalling. We
+	currently leave the lecture status files installed until there is a
+	better way to detect upgrades.
+	[61532b7113ff]
+
+	* doc/sudoers.cat, doc/sudoers.man.in, doc/sudoers.mdoc.in:
+	Update time stamp error messages and regen.
+	[edf570c98cd5]
+
+	* plugins/sudoers/timestamp.c:
+	Restore warning when sudoers is unable to update the time stamp
+	file.
+	[86648a771250]
+
+	* INSTALL, Makefile.in, configure, configure.ac, doc/sudoers.mdoc.in,
+	m4/sudo.m4, plugins/sudoers/Makefile.in, sudo.pp:
+	Replace --with-timedir and --with-lecture_dir with --with-rundir and
+	--with-vardir which are the parent directories of the time stamp and
+	lecture dirs. These directories need to be searchable by non-root so
+	that the timestampowner setting can function.
+	[5c38d77a2d0c]
+
+	* plugins/sudoers/timestamp.c:
+	Fix use of timestampowner in the new time stamp world order. Parent
+	directories for timestampdir and lecture_dir are now created with
+	the execute bit set so that we can traverse them as non-root.
+	[9ff6f07c0a5d]
+
+2014-01-31  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* common/Makefile.in, plugins/sample/Makefile.in,
+	plugins/sudoers/Makefile.in:
+	Regen Makefiles.
+	[59542bcdb222]
+
+	* common/sudo_debug.c, config.h.in, include/sudo_util.h,
+	plugins/sample/sample_plugin.c:
+	Move ctim_get and mtim_get to sudo_util.h
+	[d565391f5491]
+
+	* plugins/sudoers/timestamp.c:
+	sprinkle some debug printfs and add function header comments
+	[1842d9b8170d]
+
+	* plugins/sudoers/timestamp.c:
+	Properly handle the case where /var/run/sudo/ts doesn't exist.
+	[895f3ad6ad60]
+
+	* doc/sudoers.cat, doc/sudoers.man.in, doc/sudoers.mdoc.in:
+	fix typo
+	[50041ebb6ce6]
+
+	* NEWS:
+	Mention "sudo -K" change.
+	[e99bd7657aae]
+
+	* doc/UPGRADE:
+	Upgrade info for 1.8.10
+	[0867718b9af5]
+
+2014-01-30  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/timestamp.c:
+	Warn on ftruncate failure().
+	[d2081876da25]
+
+	* plugins/sudoers/timestamp.c:
+	Fix checking of lecture status.
+	[e12d78234d17]
+
+	* mkpkg:
+	Do not override timedir on Debian.
+	[283fa2e69a0a]
+
+	* common/event.c, common/event_select.c, include/missing.h,
+	plugins/sudoers/iolog.c, plugins/sudoers/sudoreplay.c,
+	plugins/sudoers/visudo.c, src/sudo_edit.c:
+	Use sudo_timeval macros and remove compat macros from missing.h
+	[1de76d8b811e]
+
+	* INSTALL, MANIFEST, NEWS, compat/Makefile.in, compat/clock_gettime.c,
+	config.h.in, configure, configure.ac, doc/sudoers.cat,
+	doc/sudoers.man.in, doc/sudoers.mdoc.in, include/missing.h,
+	include/sudo_util.h, m4/sudo.m4, mkdep.pl, pathnames.h.in,
+	plugins/sudoers/Makefile.in, plugins/sudoers/boottime.c,
+	plugins/sudoers/check.h, plugins/sudoers/def_data.c,
+	plugins/sudoers/def_data.h, plugins/sudoers/def_data.in,
+	plugins/sudoers/defaults.c, plugins/sudoers/sudoers.h,
+	plugins/sudoers/timestamp.c, src/Makefile.in:
+	Switch to new time stamp file format. Each user now has a single
+	file which may contain multiple records when per-tty time stamps are
+	in use (the default). The time stamps use a monotonic timer where
+	available and are once again stored in /var/run/sudo. The lecture
+	status is now stored separately from the time stamps in a different
+	directory.
+	[7e16eb37bacc]
+
+2014-01-29  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* NEWS, doc/sudoers.cat, doc/sudoers.man.in, doc/sudoers.mdoc.in,
+	plugins/sudoers/check.c:
+	When listing a user's privileges, always prompt the user for their
+	own password, regardless of the value of target_pw, root_pw or
+	runas_pw.
+	[73a13ccc7933]
+
 2014-01-30  Todd C. Miller  <Todd.Miller@courtesan.com>
 
 	* common/atomode.c:
 	Zero out errstr when there is no error; fixes bug #632
 	[74950ef1a0dc]
+
+2014-01-26  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* configure, configure.ac, plugins/sudoers/interfaces.c,
+	plugins/sudoers/match_addr.c:
+	Use inet_aton() instead of inet_addr() as it allows us to
+	distinguish between the address (or mask 255.255.255.255) and an
+	error. In the future we may consider switching to inet_pton() for
+	IPv4 too.
+	[b6b4e4c77e9a]
 
 2014-01-24  Todd C. Miller  <Todd.Miller@courtesan.com>
 
@@ -33,7 +661,50 @@
 	was already correct for the nsswitch.conf case.
 	[cfaf895c1db4]
 
+2014-01-23  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* NEWS, common/sudo_conf.c, doc/sudo.conf.cat, doc/sudo.conf.man.in,
+	doc/sudo.conf.mdoc.in, include/sudo_conf.h, src/net_ifs.c:
+	It is now possible to disable network interface probing in sudo.conf
+	by changing the value of the probe_interfaces setting.
+	[e9dc28c7db60]
+
+2014-01-22  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/match_addr.c:
+	If inet_addr() returns INADDR_NONE, return false instead of
+	iterating through the interfaces looking for a match that will never
+	happen.
+	[1559c301caec]
+
+	* configure, configure.ac, src/Makefile.in:
+	Add explicit dependency on sudoers.la to sudo target when sudoers is
+	compiled statically into the sudo binary.
+	[d08cc66e18bd]
+
+2014-01-21  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/sudoers/getdate.c, plugins/sudoers/getdate.y,
+	plugins/sudoers/iolog_path.c, plugins/sudoers/logging.c,
+	plugins/sudoers/regress/iolog_path/check_iolog_path.c,
+	plugins/sudoers/sudoreplay.c, plugins/sudoers/timestr.c:
+	Do not assume localtime(), gmtime() and ctime() always return non-
+	NULL.
+	[a1b5b67436de]
+
 2014-01-15  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* Makefile.in, common/Makefile.in, compat/Makefile.in,
+	doc/Makefile.in, include/Makefile.in,
+	plugins/group_file/Makefile.in, plugins/sample/Makefile.in,
+	plugins/sudoers/Makefile.in, plugins/system_group/Makefile.in,
+	src/Makefile.in, zlib/Makefile.in:
+	Update copyright years
+	[37d2aaa92544]
+
+	* plugins/sudoers/visudo_json.c:
+	Eliminate dead store found by clang checker.
+	[86874d5340f1]
 
 	* NEWS, configure, configure.ac:
 	Update for sudo 1.8.9p4
@@ -73,6 +744,10 @@
 	event. Bug #631
 	[a204b69d91f7]
 
+	* src/po/sr.mo, src/po/sr.po:
+	sync with translationproject.org
+	[987087ce4658]
+
 2014-01-13  Todd C. Miller  <Todd.Miller@courtesan.com>
 
 	* src/ttyname.c:
@@ -82,6 +757,66 @@
 	* NEWS, configure, configure.ac:
 	Update for sudo 1.8.9p3
 	[22e5a6f69999]
+
+	* plugins/sudoers/logwrap.c:
+	Remove dead store; found by cppcheck
+	[a59833af3401]
+
+2014-01-08  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* src/sesh.c:
+	Quiet a cppcheck warning about a negative subscript.
+	[ab98b72f5bdf]
+
+	* src/exec_common.c, src/selinux.c, src/sesh.c, src/sudo_exec.h:
+	Make noexec parameter to sudo_execve() bool.
+	[daa75e4c248a]
+
+	* plugins/sudoers/sudoreplay.c:
+	Quiet a few innocuous cppcheck warnings.
+	[90ffa16d27b1]
+
+	* plugins/sudoers/sssd.c:
+	Handle in_res being NULL for sudo_debug_printf() in
+	sudo_sss_filter_result().
+	[8595cc05d2a8]
+
+	* plugins/sudoers/iolog.c:
+	When writing length to timing file, use %u not %d as it is unsigned.
+	[a7f2fcb6919e]
+
+	* plugins/sudoers/visudo_json.c:
+	Close export_fp in the error path too, but do not close stdout.
+	[5c918718ab45]
+
+	* plugins/sudoers/auth/secureware.c:
+	Move right brace outside #ifdef HAVE_DISPCRYPT; found by cppcheck.
+	[f2619d2eb7a8]
+
+2014-01-13  Todd C. Miller  <Todd.Miller@courtesan.com>
+
+	* plugins/group_file/plugin_test.c:
+	Make this compile again
+	[f0ff8df475e8]
+
+	* common/term.c:
+	Add suppression line to quiet a bogus (inconclusive) cppcheck
+	warning.
+	[065207271e5d]
+
+	* plugins/sudoers/toke.c, plugins/sudoers/toke.l:
+	Do not leak old istack if realloc fails; found by cppcheck. Also
+	modify yyless() to avoid a harmless cppcheck warning every time it
+	is used.
+	[021077017a23]
+
+	* Makefile.in, common/Makefile.in, compat/Makefile.in,
+	doc/Makefile.in, include/Makefile.in,
+	plugins/group_file/Makefile.in, plugins/sample/Makefile.in,
+	plugins/sudoers/Makefile.in, plugins/system_group/Makefile.in,
+	src/Makefile.in, zlib/Makefile.in:
+	Add cppcheck target to run cppcheck on all source files.
+	[d207c2ef49a2]
 
 2014-01-09  Todd C. Miller  <Todd.Miller@courtesan.com>
 

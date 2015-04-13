@@ -28,6 +28,11 @@
 #  include <stdlib.h>
 # endif
 #endif /* STDC_HEADERS */
+#ifdef HAVE_STDBOOL_H
+# include <stdbool.h>
+#else
+# include "compat/stdbool.h"
+#endif /* HAVE_STDBOOL_H */
 #ifdef HAVE_STRING_H
 # if defined(HAVE_MEMORY_H) && !defined(STDC_HEADERS)
 #  include <memory.h>
@@ -60,13 +65,14 @@
  */
 
 #if defined(__linux__)
-int
+bool
 get_boottime(struct timeval *tv)
 {
     char *ep, *line = NULL;
     size_t linesize = 0;
+    bool found = false;
     ssize_t len;
-    FILE * fp;
+    FILE *fp;
     debug_decl(get_boottime, SUDO_DEBUG_UTIL)
 
     /* read btime from /proc/stat */
@@ -78,7 +84,8 @@ get_boottime(struct timeval *tv)
 		if (llval > 0) {
 		    tv->tv_sec = (time_t)llval;
 		    tv->tv_usec = 0;
-		    debug_return_bool(1);
+		    found = true;
+		    break;
 		}
 	    }
 	}
@@ -86,12 +93,12 @@ get_boottime(struct timeval *tv)
 	free(line);
     }
 
-    debug_return_bool(0);
+    debug_return_bool(found);
 }
 
 #elif defined(HAVE_SYSCTL) && defined(KERN_BOOTTIME)
 
-int
+bool
 get_boottime(struct timeval *tv)
 {
     size_t size;
@@ -102,9 +109,9 @@ get_boottime(struct timeval *tv)
     mib[1] = KERN_BOOTTIME;
     size = sizeof(*tv);
     if (sysctl(mib, 2, tv, &size, NULL, 0) != -1)
-	debug_return_bool(1);
+	debug_return_bool(true);
 
-    debug_return_bool(0);
+    debug_return_bool(false);
 }
 
 #elif defined(HAVE_GETUTXID)
@@ -151,6 +158,6 @@ int
 get_boottime(struct timeval *tv)
 {
     debug_decl(get_boottime, SUDO_DEBUG_UTIL)
-    debug_return_bool(0);
+    debug_return_bool(false);
 }
 #endif
