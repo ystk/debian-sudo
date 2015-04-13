@@ -1,0 +1,92 @@
+From: Christian Kastner <debian@kvr.at>
+Date: Fri, 05 Dec 2014 14:58:50 +0100
+Subject: Fix for broken FQDN host specifications
+
+A bug was introduced in sudo 1.8.8 which broke host specifications using a
+FQDN, eg Host_Alias = host.example.com. Upstream has fixed this in 1.8.12.
+
+This patch contains the fix backported to 1.8.10p3.
+
+Origin: http://www.sudo.ws/repos/sudo/rev/4f75b01d4884
+Bug: http://www.sudo.ws/bugs/show_bug.cgi?id=678
+Bug-Debian: https://bugs.debian.org/731583
+Last-Update: 2014-05-12
+
+Index: sudo-1.8.10p3/plugins/sudoers/sudoers.c
+===================================================================
+--- sudo-1.8.10p3.orig/plugins/sudoers/sudoers.c
++++ sudo-1.8.10p3/plugins/sudoers/sudoers.c
+@@ -799,32 +799,69 @@ set_loginclass(struct passwd *pw)
+ #endif
+ 
+ /*
+- * Look up the fully qualified domain name and set user_host and user_shost.
++ * Look up the fully qualified domain name of user_host and user_runhost.
++ * Sets user_host, user_shost, user_runhost and user_srunhost.
+  * Use AI_FQDN if available since "canonical" is not always the same as fqdn.
+  */
+ static void
+ set_fqdn(void)
+ {
+     struct addrinfo *res0, hint;
++    bool remote;
+     char *p;
+     debug_decl(set_fqdn, SUDO_DEBUG_PLUGIN)
+ 
++    /* If the -h flag was given we need to resolve both host and runhost. */
++    remote = strcmp(user_runhost, user_host) != 0;
++
+     memset(&hint, 0, sizeof(hint));
+     hint.ai_family = PF_UNSPEC;
+     hint.ai_flags = AI_FQDN;
++
++    /* First resolve user_host, sets user_host and user_shost. */
+     if (getaddrinfo(user_host, NULL, &hint, &res0) != 0) {
+ 	log_warning(MSG_ONLY, N_("unable to resolve host %s"), user_host);
+     } else {
+ 	if (user_shost != user_host)
+ 	    efree(user_shost);
+ 	efree(user_host);
+-	user_host = estrdup(res0->ai_canonname);
++	user_host = user_shost = estrdup(res0->ai_canonname);
+ 	freeaddrinfo(res0);
+ 	if ((p = strchr(user_host, '.')) != NULL)
+ 	    user_shost = estrndup(user_host, (size_t)(p - user_host));
+-	else
+-	    user_shost = user_host;
+     }
++
++    /* Next resolve user_runhost, sets user_runhost and user_srunhost. */
++    if (remote) {
++	if (getaddrinfo(user_runhost, NULL, &hint, &res0) != 0) {
++	    log_warning(MSG_ONLY,
++		N_("unable to resolve host %s"), user_runhost);
++	} else {
++	    if (user_srunhost != user_runhost)
++		efree(user_srunhost);
++	    efree(user_runhost);
++	    user_runhost = user_srunhost = estrdup(res0->ai_canonname);
++	    freeaddrinfo(res0);
++	    if ((p = strchr(user_runhost, '.'))) {
++		user_srunhost =
++		    estrndup(user_runhost, (size_t)(p - user_runhost));
++	    }
++	}
++    } else {
++	/* Not remote, just use user_host. */
++	if (user_srunhost != user_runhost)
++	    efree(user_srunhost);
++	efree(user_runhost);
++	user_runhost = user_srunhost = estrdup(user_host);
++	if ((p = strchr(user_runhost, '.'))) {
++	    user_srunhost =
++		estrndup(user_runhost, (size_t)(p - user_runhost));
++	}
++    }
++
++    sudo_debug_printf(SUDO_DEBUG_INFO|SUDO_DEBUG_LINENO,
++	"host %s, shost %s, runhost %s, srunhost %s",
++	user_host, user_shost, user_runhost, user_srunhost);
+     debug_return;
+ }
+ 

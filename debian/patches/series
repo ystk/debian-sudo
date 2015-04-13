@@ -1,2 +1,6 @@
 typo-in-classic-insults.diff
 paths-in-samples.diff
+Fix-for-broken-FQDN-host-specifications.diff
+future-timestamp.diff
+CVE-2014-9680-1.patch
+CVE-2014-9680-2.patch

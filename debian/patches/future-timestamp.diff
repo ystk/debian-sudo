@@ -1,0 +1,11 @@
+--- a/plugins/sudoers/boottime.c
++++ b/plugins/sudoers/boottime.c
+@@ -80,6 +80,8 @@
+     if (fp != NULL) {
+ 	while ((len = getline(&line, &linesize, fp)) != -1) {
+ 	    if (strncmp(line, "btime ", 6) == 0) {
++		if (line[len - 1] == '\n')
++		    line[len - 1] = '\0';
+ 		long long llval = strtonum(line + 6, 1, LLONG_MAX, NULL);
+ 		if (llval > 0) {
+ 		    tv->tv_sec = (time_t)llval;

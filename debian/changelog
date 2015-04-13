@@ -1,3 +1,44 @@
+sudo (1.8.10p3-1+deb8u2) testing-proposed-updates; urgency=medium
+
+  * Non-maintainer upload.
+
+  [ Salvatore Bonaccorso ]
+  * Add CVE-2014-9680-1.patch patch.
+    CVE-2014-9680: unsafe handling of TZ environment variable. (Closes: #772707)
+  * Add CVE-2014-9680-2.patch patch.
+    Documents that a leading ':' is skipped when checking TZ for a
+    fully-qualified path name.
+
+  [ Christian Kastner ]
+  * In the *.preinst scripts, make sure that dpkg --compare-versions actually
+    has two versions to compare. Closes: #776137
+  * Also in the *.preinst scripts, make sure that /etc/sudoers exists before
+    attempting to chown/chmod it
+  * Include patch from Jakub Wilk to fix 'ignoring time stamp from the
+    future' messages. Closes: #764817
+
+ -- Christian Kastner <debian@kvr.at>  Sun, 01 Mar 2015 18:56:17 +0100
+
+sudo (1.8.10p3-1+deb8u1) testing-proposed-updates; urgency=medium
+
+  * Non-maintainer upload.
+  * Backport upstream's fix for host specifications using a FQDN. These were
+    no longer working since 1.8.8. Closes: #731583
+
+ -- Christian Kastner <debian@kvr.at>  Sat, 17 Jan 2015 15:39:31 +0100
+
+sudo (1.8.10p3-1) unstable; urgency=low
+
+  * new upstream release
+  * add hardening=+all to match login and su
+  * updated VCS URLs and crypto verified watch file, closes: #747473
+  * harmonize configure options for LDAP version to match non-LDAP version,
+    in particular stop using --with-secure-path and add configure_args
+  * enable audit support on Linux systems, closes: #745779
+  * follow upstream change from --with-timedir to --with-rundir
+
+ -- Bdale Garbee <bdale@gag.com>  Sun, 14 Sep 2014 10:20:15 -0600
+
 sudo (1.8.9p5-1) unstable; urgency=low
 
   * new upstream release, closes: #735328

@@ -28,8 +28,10 @@ if [ -d "/var/run/sudo" ];then
 fi
 
 # make sure sudoers has the correct permissions and owner/group
-chown root:root /etc/sudoers
-chmod 440 /etc/sudoers
+if [ -f /etc/sudoers ];then
+    chown root:root /etc/sudoers
+    chmod 440 /etc/sudoers
+fi
 
 # create symlink to ease transition to new path for ldap config
 # if old config file exists and new one doesn't

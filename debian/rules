@@ -1,6 +1,7 @@
 #!/usr/bin/make -f
 
 export DH_VERBOSE=1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 CFLAGS = `dpkg-buildflags --get CFLAGS`
 CFLAGS += -Wall -Wno-comment
@@ -10,7 +11,7 @@ CPPFLAGS = `dpkg-buildflags --get CPPFLAGS`
 DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
 DEB_HOST_ARCH_OS ?= $(shell dpkg-architecture -qDEB_HOST_ARCH_OS)
 ifeq ($(DEB_HOST_ARCH_OS),linux)
-  configure_args += --with-selinux
+  configure_args += --with-selinux --with-linux-audit
 endif
 
 reconf-stamp:
@@ -42,7 +43,7 @@ configure-stamp: reconf-stamp
 		--with-passprompt="[sudo] password for %p: " \
 		--disable-root-mailer \
 		--with-sendmail=/usr/sbin/sendmail \
-		--with-timedir=/var/lib/sudo \
+		--with-rundir=/var/lib/sudo \
 		--mandir=/usr/share/man \
 		--libexecdir=/usr/lib/sudo \
 		--with-sssd --with-sssd-lib=/usr/lib/$(DEB_HOST_MULTIARCH) \
@@ -67,10 +68,11 @@ configure-stamp: reconf-stamp
 		--disable-root-mailer \
 		--disable-setresuid \
 		--with-sendmail=/usr/sbin/sendmail \
+		--with-rundir=/var/lib/sudo \
 		--with-ldap-conf-file=/etc/sudo-ldap.conf \
 		--mandir=/usr/share/man \
 		--libexecdir=/usr/lib/sudo \
-		--with-secure-path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/X11R6/bin"
+		$(configure_args)
 
 	touch configure-stamp
 

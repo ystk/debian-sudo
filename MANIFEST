@@ -23,6 +23,7 @@ common/fmt_string.c
 common/gidlist.c
 common/lbuf.c
 common/progname.c
+common/regress/atofoo/atofoo_test.c
 common/regress/sudo_conf/conf_test.c
 common/regress/sudo_conf/test1.in
 common/regress/sudo_conf/test1.out.ok
@@ -32,6 +33,7 @@ common/regress/sudo_conf/test3.in
 common/regress/sudo_conf/test3.out.ok
 common/regress/sudo_conf/test4.in
 common/regress/sudo_conf/test4.out.ok
+common/regress/sudo_conf/test5.err.ok
 common/regress/sudo_conf/test5.in
 common/regress/sudo_conf/test5.out.ok
 common/regress/sudo_conf/test6.in
@@ -60,6 +62,7 @@ common/term.c
 common/ttysize.c
 compat/Makefile.in
 compat/charclass.h
+compat/clock_gettime.c
 compat/closefrom.c
 compat/endian.h
 compat/fnmatch.c
@@ -73,6 +76,7 @@ compat/getopt.h
 compat/getopt_long.c
 compat/glob.c
 compat/glob.h
+compat/inet_pton.c
 compat/isblank.c
 compat/memrchr.c
 compat/memset_s.c
@@ -156,6 +160,8 @@ include/sudo_event.h
 include/sudo_plugin.h
 include/sudo_util.h
 indent.pro
+init.d/aix.sh.in
+init.d/hpux.sh.in
 install-sh
 ltmain.sh
 m4/ax_check_compile_flag.m4
@@ -244,6 +250,8 @@ plugins/sudoers/mkdefaults
 plugins/sudoers/parse.c
 plugins/sudoers/parse.h
 plugins/sudoers/po/README
+plugins/sudoers/po/cs.mo
+plugins/sudoers/po/cs.po
 plugins/sudoers/po/da.mo
 plugins/sudoers/po/da.po
 plugins/sudoers/po/de.mo
@@ -270,6 +278,8 @@ plugins/sudoers/po/pt_BR.mo
 plugins/sudoers/po/pt_BR.po
 plugins/sudoers/po/sl.mo
 plugins/sudoers/po/sl.po
+plugins/sudoers/po/sr.mo
+plugins/sudoers/po/sr.po
 plugins/sudoers/po/sudoers.pot
 plugins/sudoers/po/sv.mo
 plugins/sudoers/po/sv.po
@@ -354,6 +364,10 @@ plugins/sudoers/regress/testsudoers/test4.out.ok
 plugins/sudoers/regress/testsudoers/test4.sh
 plugins/sudoers/regress/testsudoers/test5.out.ok
 plugins/sudoers/regress/testsudoers/test5.sh
+plugins/sudoers/regress/testsudoers/test6.out.ok
+plugins/sudoers/regress/testsudoers/test6.sh
+plugins/sudoers/regress/testsudoers/test7.out.ok
+plugins/sudoers/regress/testsudoers/test7.sh
 plugins/sudoers/regress/visudo/test1.out.ok
 plugins/sudoers/regress/visudo/test1.sh
 plugins/sudoers/regress/visudo/test2.err.ok
@@ -407,8 +421,9 @@ src/locale_stub.c
 src/net_ifs.c
 src/openbsd.c
 src/parse_args.c
-src/preserve_fds.c
 src/po/README
+src/po/ca.mo
+src/po/ca.po
 src/po/cs.mo
 src/po/cs.po
 src/po/da.mo
@@ -457,6 +472,7 @@ src/po/vi.po
 src/po/zh_CN.mo
 src/po/zh_CN.po
 src/preload.c
+src/preserve_fds.c
 src/regress/ttyname/check_ttyname.c
 src/selinux.c
 src/sesh.c

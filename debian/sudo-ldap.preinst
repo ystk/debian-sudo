@@ -2,7 +2,7 @@
 
 case "$1" in
   install|upgrade)
-    if dpkg --compare-versions "$2" le "1.7.4p4-4"; then
+    if [ -n "$2" ] && dpkg --compare-versions "$2" le "1.7.4p4-4"; then
 
       SUDOERS="/etc/sudoers"
 
