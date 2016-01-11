@@ -1,0 +1,27 @@
+Description: Fix sudoersdebug usage.
+ sudoersdebug (aka yydebug) is defined only if the macro YYDEBUG is non-zero.
+ The bison-generated version of gram.h defines YYDEBUG as 0 if it wasn't
+ previously defined, so we need to test it with #if not #ifdef.
+Author: Ben Hutchings <ben@decadent.org.uk>
+Date: Tue, 05 Jan 2016 18:25:54 +0000
+
+--- a/plugins/sudoers/testsudoers.c
++++ b/plugins/sudoers/testsudoers.c
+@@ -106,7 +106,7 @@ static char *runas_group, *runas_user;
+ #if defined(SUDO_DEVEL) && defined(__OpenBSD__)
+ extern char *malloc_options;
+ #endif
+-#ifdef YYDEBUG
++#if YYDEBUG
+ extern int sudoersdebug;
+ #endif
+ 
+@@ -128,7 +128,7 @@ main(int argc, char *argv[])
+ #if defined(SUDO_DEVEL) && defined(__OpenBSD__)
+     malloc_options = "AFGJPR";
+ #endif
+-#ifdef YYDEBUG
++#if YYDEBUG
+     sudoersdebug = 1;
+ #endif
+ 
