@@ -1,3 +1,19 @@
+sudo (1.7.4p4-2.squeeze.6) squeeze-lts; urgency=medium
+
+  * Non-maintainer upload by the Debian LTS team
+  * Disable editing of files via user-controllable symlinks
+    (Closes: #804149) (CVE-2015-5602)
+    - sudoedit path restriction bypass using symlinks
+    - Change warning when user tries to sudoedit a symbolic link
+    - Open sudoedit files with O_NONBLOCK and fail if they are not regular files
+    - Remove S_ISREG check from sudo_edit_open(), it is already done in the
+      caller
+    - Add directory writability checks for sudoedit
+    - Fix directory writability checks for sudoedit
+    - Enable sudoedit directory writability checks by default
+
+ -- Ben Hutchings <ben@decadent.org.uk>  Tue, 05 Jan 2016 18:45:35 +0000
+
 sudo (1.7.4p4-2.squeeze.5) squeeze-lts; urgency=medium
 
   * Properly update manual pages for environment variable handling changes
