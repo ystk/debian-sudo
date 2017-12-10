@@ -1,3 +1,11 @@
+sudo (1.8.10p3-1+deb8u5) jessie; urgency=medium
+
+  * Non-maintainer upload.
+  * Use /proc/self consistently on Linux
+  * CVE-2017-1000368: Arbitrary terminal access (Closes: #863897)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Tue, 08 Aug 2017 21:44:31 +0200
+
 sudo (1.8.10p3-1+deb8u4) jessie-security; urgency=high
 
   * Non-maintainer upload by the Security Team.

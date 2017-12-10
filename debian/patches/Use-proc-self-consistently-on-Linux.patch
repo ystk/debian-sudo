@@ -1,0 +1,29 @@
+
+# HG changeset patch
+# User Todd C. Miller <Todd.Miller@courtesan.com>
+# Date 1496162651 21600
+# Node ID ef737b5d4ed831178f6049e50ef085d79438d92a
+# Parent  7ab1be502dc3ad227c6f6c687b004cea3b94bd66
+Use /proc/self consistently on Linux.  As far as I know, only AIX
+doesn't support /proc/self.
+
+--- a/src/ttyname.c
++++ b/src/ttyname.c
+@@ -412,14 +412,14 @@ get_process_ttyname(void)
+ char *
+ get_process_ttyname(void)
+ {
+-    char path[PATH_MAX], *line = NULL, *tty = NULL;
++    const char path[] = "/proc/self/stat";
++    char *line = NULL, *tty = NULL;
+     size_t linesize = 0;
+     ssize_t len;
+     FILE *fp;
+     debug_decl(get_process_ttyname, SUDO_DEBUG_UTIL)
+ 
+-    /* Try to determine the tty from tty_nr in /proc/pid/stat. */
+-    snprintf(path, sizeof(path), "/proc/%u/stat", (unsigned int)getpid());
++    /* Try to determine the tty from tty_nr in /proc/self/stat. */
+     if ((fp = fopen(path, "r")) != NULL) {
+ 	len = getline(&line, &linesize, fp);
+ 	fclose(fp);
