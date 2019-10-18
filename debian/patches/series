@@ -18,3 +18,4 @@ CVE-2015-5602-7.patch
 CVE-2017-1000367.patch
 Use-proc-self-consistently-on-Linux.patch
 CVE-2017-1000368.patch
+CVE-2019-14287.patch
