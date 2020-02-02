@@ -1,3 +1,11 @@
+sudo (1.8.10p3-1+deb8u7) jessie-security; urgency=medium
+
+  * Non-maintainer upload by the LTS Security Team.
+  * CVE-2019-18634: Fix a buffer overflow when pwfeedback is enabled
+      and input is a not a tty.
+
+ -- Dylan Aïssi <daissi@debian.org>  Sat, 01 Feb 2020 21:57:15 +0100
+
 sudo (1.8.10p3-1+deb8u6) jessie-security; urgency=high
 
   * Non-maintainer upload by the LTS Security Team.
