@@ -1,0 +1,94 @@
+From 1e94630a10326635ea5cdd8dc575f43e40a80469 Mon Sep 17 00:00:00 2001
+From: "Todd C. Miller" <Todd.Miller@sudo.ws>
+Date: Wed, 20 Jan 2021 09:03:43 +0100
+Subject: [PATCH 3/5] Fix potential buffer overflow when unescaping backslashes
+ in user_args.
+
+Do not try to unescaping backslashes unless in run mode *and* we are
+running the command via a shell.
+Found by Qualys.
+
+[Salvatore Bonaccorso: Backport to 1.8.27: Context changes]
+---
+ plugins/sudoers/sudoers.c | 23 ++++++++++++++++++-----
+ 1 file changed, 18 insertions(+), 5 deletions(-)
+
+Index: sudo-1.8.10p3/plugins/sudoers/sudoers.c
+===================================================================
+--- sudo-1.8.10p3.orig/plugins/sudoers/sudoers.c	2021-01-27 10:19:12.495427282 +0100
++++ sudo-1.8.10p3/plugins/sudoers/sudoers.c	2021-01-27 10:30:09.548536691 +0100
+@@ -137,6 +137,8 @@
+ 
+     /* Parse info from front-end. */
+     sudo_mode = sudoers_policy_deserialize_info(info, &runas_user, &runas_group);
++    if (ISSET(sudo_mode, MODE_ERROR))
++	debug_return_bool(-1);
+ 
+     init_vars(envp);		/* XXX - move this later? */
+ 
+@@ -351,7 +353,7 @@
+ 
+     /* If run as root with SUDO_USER set, set sudo_user.pw to that user. */
+     /* XXX - causes confusion when root is not listed in sudoers */
+-    if (sudo_mode & (MODE_RUN | MODE_EDIT) && prev_user != NULL) {
++    if (ISSET(sudo_mode, MODE_RUN|MODE_EDIT) && prev_user != NULL) {
+ 	if (user_uid == 0 && strcmp(prev_user, "root") != 0) {
+ 	    struct passwd *pw;
+ 
+@@ -608,8 +610,8 @@
+     if (user_cmnd == NULL)
+ 	user_cmnd = NewArgv[0];
+ 
+-    if (sudo_mode & (MODE_RUN | MODE_EDIT | MODE_CHECK)) {
+-	if (ISSET(sudo_mode, MODE_RUN | MODE_CHECK)) {
++    if (ISSET(sudo_mode, MODE_RUN|MODE_EDIT|MODE_CHECK)) {
++	if (!ISSET(sudo_mode, MODE_EDIT)) {
+ 	    if (def_secure_path && !user_is_exempt())
+ 		path = def_secure_path;
+ 	    set_perms(PERM_RUNAS);
+@@ -634,7 +636,8 @@
+ 	    for (size = 0, av = NewArgv + 1; *av; av++)
+ 		size += strlen(*av) + 1;
+ 	    user_args = emalloc(size);
+-	    if (ISSET(sudo_mode, MODE_SHELL|MODE_LOGIN_SHELL)) {
++            if (ISSET(sudo_mode, MODE_SHELL|MODE_LOGIN_SHELL) &&
++                    ISSET(sudo_mode, MODE_RUN)) {
+ 		/*
+ 		 * When running a command via a shell, the sudo front-end
+ 		 * escapes potential meta chars.  We unescape non-spaces
+@@ -642,10 +645,22 @@
+ 		 */
+ 		for (to = user_args, av = NewArgv + 1; (from = *av); av++) {
+ 		    while (*from) {
+-			if (from[0] == '\\' && !isspace((unsigned char)from[1]))
++			if (from[0] == '\\' && from[1] != '\0' &&
++				!isspace((unsigned char)from[1])) {
+ 			    from++;
++			}
++			if (size - (to - user_args) < 1) {
++			    warningx(U_("internal error, %s overflow"),
++				__func__);
++			    debug_return_int(NOT_FOUND);
++			}
+ 			*to++ = *from++;
+ 		    }
++		    if (size - (to - user_args) < 1) {
++			warningx(U_("internal error, %s overflow"),
++			    __func__);
++			debug_return_int(NOT_FOUND);
++		    }
+ 		    *to++ = ' ';
+ 		}
+ 		*--to = '\0';
+Index: sudo-1.8.10p3/plugins/sudoers/sudoers.h
+===================================================================
+--- sudo-1.8.10p3.orig/plugins/sudoers/sudoers.h	2014-05-07 02:26:16.000000000 +0200
++++ sudo-1.8.10p3/plugins/sudoers/sudoers.h	2021-01-27 10:26:57.759300740 +0100
+@@ -145,6 +145,7 @@
+ #define MODE_LIST		0x00000080
+ #define MODE_CHECK		0x00000100
+ #define MODE_LISTDEFS		0x00000200
++#define MODE_ERROR		0x00000400
+ #define MODE_MASK		0x0000ffff
+ 
+ /* Mode flags */

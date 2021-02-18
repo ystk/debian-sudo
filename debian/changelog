@@ -1,3 +1,15 @@
+sudo (1.8.10p3-1+deb8u8) jessie-security; urgency=medium
+
+  * Non-maintainer upload by the ELTS Team.
+  * Heap-based buffer overflow (CVE-2021-3156)
+    (based on patches provided by Salvatore for Stretch)
+    - Reset valid_flags to MODE_NONINTERACTIVE for sudoedit
+    - Add sudoedit flag checks in plugin that are consistent with front-end
+    - Fix potential buffer overflow when unescaping backslashes in user_args
+    - Don't assume that argv is allocated as a single flat buffer
+
+ -- Thorsten Alteholz <debian@alteholz.de>  Mon, 25 Jan 2021 20:03:02 +0100
+
 sudo (1.8.10p3-1+deb8u7) jessie-security; urgency=medium
 
   * Non-maintainer upload by the LTS Security Team.

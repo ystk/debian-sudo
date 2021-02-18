@@ -20,3 +20,8 @@ Use-proc-self-consistently-on-Linux.patch
 CVE-2017-1000368.patch
 CVE-2019-14287.patch
 CVE-2019-18634.patch
+
+Reset-valid_flags-to-MODE_NONINTERACTIVE-for-sudoedi.patch
+Add-sudoedit-flag-checks-in-plugin-that-are-consiste.patch
+Fix-potential-buffer-overflow-when-unescaping-backsl.patch
+Don-t-assume-that-argv-is-allocated-as-a-single-flat.patch

@@ -1,0 +1,56 @@
+From 9f8d2f158166512511aac5e32928dcf6c65005c3 Mon Sep 17 00:00:00 2001
+From: "Todd C. Miller" <Todd.Miller@sudo.ws>
+Date: Wed, 20 Jan 2021 09:03:17 +0100
+Subject: [PATCH 2/5] Add sudoedit flag checks in plugin that are consistent
+ with front-end.
+
+Don't assume the sudo front-end is sending reasonable mode flags.
+These checks need to be kept consistent between the sudo front-end
+and the sudoers plugin.
+
+[Salvatore Bonaccorso: Backport to 1.8.27 and 1.8.19p1: Context changes]
+---
+ plugins/sudoers/policy.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+Index: sudo-1.8.10p3/plugins/sudoers/policy.c
+===================================================================
+--- sudo-1.8.10p3.orig/plugins/sudoers/policy.c	2021-01-26 13:56:04.085967552 +0100
++++ sudo-1.8.10p3/plugins/sudoers/policy.c	2021-01-26 14:24:40.228272088 +0100
+@@ -85,11 +85,12 @@
+ int
+ sudoers_policy_deserialize_info(void *v, char **runas_user, char **runas_group)
+ {
++    const int edit_mask = MODE_EDIT|MODE_IGNORE_TICKET|MODE_NONINTERACTIVE;
+     struct sudoers_policy_open_info *info = v;
+-    char * const *cur;
+     const char *p, *errstr, *groups = NULL;
+     const char *debug_flags = NULL;
+     const char *remhost = NULL;
++    char * const *cur;
+     int flags = 0;
+     debug_decl(sudoers_policy_deserialize_info, SUDO_DEBUG_PLUGIN)
+ 
+@@ -265,6 +266,12 @@
+ 	}
+     }
+ 
++    /* Sudo front-end should restrict mode flags for sudoedit. */
++    if (ISSET(flags, MODE_EDIT) && (flags & edit_mask) != flags) {
++       warningx(U_("invalid mode flags from sudo front end: 0x%x"), flags);
++       goto bad;
++    }
++
+     for (cur = info->user_info; *cur != NULL; cur++) {
+ 	if (MATCHES(*cur, "user=")) {
+ 	    user_name = estrdup(*cur + sizeof("user=") - 1);
+@@ -356,6 +363,9 @@
+ 
+ #undef MATCHES
+     debug_return_int(flags);
++
++bad:
++    debug_return_int(MODE_ERROR);
+ }
+ 
+ /*

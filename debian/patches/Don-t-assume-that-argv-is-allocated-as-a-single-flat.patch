@@ -1,0 +1,76 @@
+From 61470612e3bc1a0aca268d80bc55c36c1802b7fd Mon Sep 17 00:00:00 2001
+From: "Todd C. Miller" <Todd.Miller@sudo.ws>
+Date: Wed, 20 Jan 2021 09:04:39 +0100
+Subject: [PATCH 5/5] Don't assume that argv is allocated as a single flat
+ buffer.
+
+While this is how the kernel behaves it is not a portable assumption.
+The assumption may also be violated if getopt_long(3) permutes arguments.
+Found by Qualys.
+
+[Salvatore Bonaccorso: Backport to 1.8.27 and 1.8.19p1: Context changes]
+---
+ src/parse_args.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+Index: sudo-1.8.10p3/src/parse_args.c
+===================================================================
+--- sudo-1.8.10p3.orig/src/parse_args.c	2021-01-26 15:11:52.861171959 +0100
++++ sudo-1.8.10p3/src/parse_args.c	2021-01-26 15:33:12.103254407 +0100
+@@ -48,6 +48,13 @@
+ #include <ctype.h>
+ #include <grp.h>
+ #include <pwd.h>
++#if defined(HAVE_STDINT_H)
++# include <stdint.h>
++#elif defined(HAVE_INTTYPES_H)
++# include <inttypes.h>
++#endif
++#include <errno.h>
++#include <limits.h>
+ 
+ #include <sudo_usage.h>
+ #include "sudo.h"
+@@ -166,6 +173,23 @@
+ };
+ 
+ /*
++ * This is sqrt(SIZE_MAX+1), as s1*s2 <= SIZE_MAX
++ * if both s1 < MUL_NO_OVERFLOW and s2 < MUL_NO_OVERFLOW
++ */
++#define MUL_NO_OVERFLOW ((size_t)1 << (sizeof(size_t) * 4))
++
++void *
++patch_reallocarray(void *optr, size_t nmemb, size_t size)
++{
++        if ((nmemb >= MUL_NO_OVERFLOW || size >= MUL_NO_OVERFLOW) &&
++            nmemb > 0 && SIZE_MAX / nmemb < size) {
++                errno = ENOMEM;
++                return NULL;
++        }
++        return realloc(optr, size * nmemb);
++}
++
++/*
+  * Command line argument parsing.
+  * Sets nargc and nargv which corresponds to the argc/argv we'll use
+  * for the command to be run (if we are running one).
+@@ -463,11 +487,14 @@
+ 	if (argc != 0) {
+ 	    /* shell -c "command" */
+ 	    char *src, *dst;
+-	    size_t cmnd_size = (size_t) (argv[argc - 1] - argv[0]) +
+-		strlen(argv[argc - 1]) + 1;
++            size_t size = 0;
++
++            for (av = argv; *av != NULL; av++)
++                size += strlen(*av) + 1;
++            if (size == 0 || (cmnd = patch_reallocarray(NULL, size, 2)) == NULL)
++                fatalx(U_("%s: %s"), __func__, U_("unable to allocate memory"));
+ 
+-	    cmnd = dst = emalloc2(cmnd_size, 2);
+-	    for (av = argv; *av != NULL; av++) {
++            for (dst = cmnd, av = argv; *av != NULL; av++) {
+ 		for (src = *av; *src != '\0'; src++) {
+ 		    /* quote potential meta characters */
+ 		    if (!isalnum((unsigned char)*src) && *src != '_' && *src != '-' && *src != '$')
