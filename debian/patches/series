@@ -25,3 +25,5 @@ Reset-valid_flags-to-MODE_NONINTERACTIVE-for-sudoedi.patch
 Add-sudoedit-flag-checks-in-plugin-that-are-consiste.patch
 Fix-potential-buffer-overflow-when-unescaping-backsl.patch
 Don-t-assume-that-argv-is-allocated-as-a-single-flat.patch
+
+CVE-2023-22809.patch

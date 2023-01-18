@@ -1,3 +1,11 @@
+sudo (1.8.10p3-1+deb8u9) jessie-security; urgency=medium
+
+  * Non-maintainer upload by the ELTS Team.
+  * CVE-2023-22809
+    sudoedit: do not permit editor arguments to include "--"
+
+ -- Thorsten Alteholz <debian@alteholz.de>  Mon, 16 Jan 2023 21:03:02 +0100
+
 sudo (1.8.10p3-1+deb8u8) jessie-security; urgency=medium
 
   * Non-maintainer upload by the ELTS Team.
